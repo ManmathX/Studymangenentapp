@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment files (keep the committed .env.example)
+.env
+.env.*
+!.env.example
+
+# Local MongoDB data, logs and API logs
+backend/.data/
+*.log
+
+# Test coverage
+coverage/
+
+# Claude Code per-user settings
+.claude/settings.local.json
+
+# macOS
+.DS_Store
