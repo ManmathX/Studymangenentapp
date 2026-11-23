@@ -1,3 +1,4 @@
+import { useNavigation } from '@react-navigation/native';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SuggestionCard } from '../../components/domain/SuggestionCard';
@@ -11,6 +12,7 @@ import { useResource } from '../../hooks/useResource';
 import { profileActions, suggestionActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useAuthStore } from '../../store/authStore';
+import { usePreferencesStore } from '../../store/preferencesStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { hours, initialOf, shortDate } from '../../utils/format';
 
@@ -30,6 +32,7 @@ export function PrivacyScreen() {
         {(data) => (
           <>
             <ProfileCard data={data} />
+            <AppearanceSection />
             <AppMode data={data} />
             <ParentView data={data} />
             <StudyGroups data={data} />
@@ -62,6 +65,24 @@ function ProfileCard({ data }) {
         ))}
       </View>
     </Card>
+  );
+}
+
+const APPEARANCE_OPTIONS = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+function AppearanceSection() {
+  const appearance = usePreferencesStore((state) => state.appearance);
+  const setAppearance = usePreferencesStore((state) => state.setAppearance);
+  return (
+    <Section title="Appearance" flush footer="System follows your phone’s light or dark setting. Saved on this device.">
+      <View style={styles.padded}>
+        <SegmentedControl label="Appearance" value={appearance} onChange={setAppearance} options={APPEARANCE_OPTIONS} />
+      </View>
+    </Section>
   );
 }
 
@@ -188,6 +209,7 @@ function SavedForLater({ items }) {
 }
 
 function Account() {
+  const navigation = useNavigation();
   const logout = useAuthStore((state) => state.logout);
   const [confirming, setConfirming] = useState(false);
   const signOut = useAsyncAction(logout);
@@ -199,10 +221,12 @@ function Account() {
     await profileActions.startOver();
   });
   return (
-    <Section title="Account" footer="Start over deletes your plan, homework, tests and history. Your login stays.">
+    <Section title="Account" footer="Start over deletes your plan, homework, tests and history but keeps your login. Delete account removes everything, including the login.">
       <View style={{ gap: 10 }}>
         <Button title="Sign out" icon="logout" onPress={signOut.execute} loading={signOut.pending} block />
+        <Button title="Change password" icon="key" onPress={() => navigation.navigate('ChangePassword')} block testID="open-change-password" />
         <Button title={confirming ? 'Tap again to delete everything' : 'Start over with setup'} variant="danger" onPress={startOver.execute} loading={startOver.pending} block testID="start-over" />
+        <Button title="Delete account" icon="trash" variant="danger" onPress={() => navigation.navigate('DeleteAccount')} block testID="open-delete-account" />
       </View>
     </Section>
   );

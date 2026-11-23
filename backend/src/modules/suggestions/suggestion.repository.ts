@@ -30,7 +30,12 @@ export type NewSuggestion = Omit<SuggestionRecord, 'id' | 'state'>;
 export interface SuggestionRepository {
   listByStates(userId: string, states: SuggestionState[]): Promise<SuggestionRecord[]>;
   findById(userId: string, id: string): Promise<SuggestionRecord | null>;
-  setState(userId: string, id: string, state: SuggestionState, tx?: TxHandle): Promise<SuggestionRecord | null>;
+  setState(
+    userId: string,
+    id: string,
+    state: SuggestionState,
+    tx?: TxHandle,
+  ): Promise<SuggestionRecord | null>;
   /** Creates the suggestion only when none exists yet for the same task. */
   ensureMoveSuggestion(userId: string, suggestion: NewSuggestion): Promise<void>;
   insertMany(userId: string, suggestions: NewSuggestion[], tx: TxHandle): Promise<void>;
@@ -66,11 +71,19 @@ export class MongoSuggestionRepository implements SuggestionRepository {
   }
 
   async findById(userId: string, id: string): Promise<SuggestionRecord | null> {
-    const doc = await SuggestionModel.findOne({ _id: toObjectId(id), userId: toObjectId(userId) }).lean<SuggestionDocument>();
+    const doc = await SuggestionModel.findOne({
+      _id: toObjectId(id),
+      userId: toObjectId(userId),
+    }).lean<SuggestionDocument>();
     return doc ? toRecord(doc) : null;
   }
 
-  async setState(userId: string, id: string, state: SuggestionState, tx?: TxHandle): Promise<SuggestionRecord | null> {
+  async setState(
+    userId: string,
+    id: string,
+    state: SuggestionState,
+    tx?: TxHandle,
+  ): Promise<SuggestionRecord | null> {
     const doc = await SuggestionModel.findOneAndUpdate(
       { _id: toObjectId(id), userId: toObjectId(userId) },
       { $set: { state } },
@@ -92,7 +105,11 @@ export class MongoSuggestionRepository implements SuggestionRepository {
     if (!suggestions.length) return;
     const owner = toObjectId(userId);
     await SuggestionModel.insertMany(
-      suggestions.map((item) => ({ ...item, userId: owner, taskId: item.taskId ? toObjectId(item.taskId) : null })),
+      suggestions.map((item) => ({
+        ...item,
+        userId: owner,
+        taskId: item.taskId ? toObjectId(item.taskId) : null,
+      })),
       { session: tx },
     );
   }

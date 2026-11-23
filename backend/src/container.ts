@@ -9,6 +9,7 @@ import { mongoTransactionRunner } from './database/transaction.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { MongoAuditRepository } from './modules/audit/audit.repository.js';
 import { AuditService } from './modules/audit/audit.service.js';
+import { AccountService } from './modules/auth/account.service.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { Argon2PasswordHasher, type PasswordHasher } from './modules/auth/password.service.js';
@@ -53,6 +54,8 @@ export interface ContainerOptions {
   clock?: Clock;
   passwordHasher?: PasswordHasher;
   startedAt?: Date;
+  /** Reports whether a graceful shutdown has begun (readiness then fails). */
+  isShuttingDown?: () => boolean;
 }
 
 export interface Container {
@@ -85,7 +88,8 @@ export function buildContainer(options: ContainerOptions): Container {
     audience: config.JWT_AUDIENCE,
     accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
   });
-  const auth = new AuthService(users, refreshTokens, profiles, options.passwordHasher ?? new Argon2PasswordHasher(), tokens, audit, clock, {
+  const passwords = options.passwordHasher ?? new Argon2PasswordHasher();
+  const auth = new AuthService(users, refreshTokens, profiles, passwords, tokens, audit, clock, {
     accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
     refreshTtlDays: config.REFRESH_TOKEN_TTL_DAYS,
     reuseGraceSeconds: config.REFRESH_REUSE_GRACE_SECONDS,
@@ -94,7 +98,28 @@ export function buildContainer(options: ContainerOptions): Container {
   const context = new StudentContext(profiles, clock);
   const scheduling = new SchedulingService(tasks, homework, exams, chapters);
   const profileService = new ProfileService(profiles, users, context);
-  const onboarding = new OnboardingService(transactions, context, profileService, profiles, chapters, exams, homework, tasks, suggestions, habits, scheduling, audit);
+  const onboarding = new OnboardingService(
+    transactions,
+    context,
+    profileService,
+    profiles,
+    chapters,
+    exams,
+    homework,
+    tasks,
+    suggestions,
+    habits,
+    scheduling,
+    audit,
+  );
+  const accounts = new AccountService(
+    users,
+    refreshTokens,
+    passwords,
+    onboarding,
+    transactions,
+    audit,
+  );
   const plan = new PlanService(context, tasks, exams, scheduling);
   const chapterService = new ChapterService(context, chapters, tasks, exams);
   const taskService = new TaskService(context, tasks, homework, chapters, suggestions);
@@ -102,7 +127,17 @@ export function buildContainer(options: ContainerOptions): Container {
   const examService = new ExamService(context, exams, chapters);
   const homeworkService = new HomeworkService(context, homework, tasks, transactions);
   const habitsService = new HabitsService(context, habits, tasks, homework);
-  const dashboard = new DashboardService(context, tasks, exams, examService, habits, suggestions, suggestionService, chapterService, users);
+  const dashboard = new DashboardService(
+    context,
+    tasks,
+    exams,
+    examService,
+    habits,
+    suggestions,
+    suggestionService,
+    chapterService,
+    users,
+  );
 
   const rateLimiters = createRateLimiters(
     {
@@ -115,8 +150,8 @@ export function buildContainer(options: ContainerOptions): Container {
   );
 
   const routes: Route[] = [
-    ...healthRoutes(redis, options.startedAt ?? new Date()),
-    ...authRoutes(auth, rateLimiters.auth),
+    ...healthRoutes(redis, options.startedAt ?? new Date(), options.isShuttingDown),
+    ...authRoutes(auth, accounts, rateLimiters.auth),
     ...syllabusRoutes(),
     ...profileRoutes(profileService, onboarding),
     ...dashboardRoutes(dashboard),

@@ -4,7 +4,7 @@ import { Controller } from 'react-hook-form';
 import { useTheme } from '../../theme/ThemeProvider';
 
 const Input = forwardRef(function Input({ label, error, multiline, style, ...props }, ref) {
-  const { colors, radius } = useTheme();
+  const { colors, radius, scheme } = useTheme();
   return (
     <View style={styles.wrap}>
       {label ? <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text> : null}
@@ -12,6 +12,8 @@ const Input = forwardRef(function Input({ label, error, multiline, style, ...pro
         ref={ref}
         accessibilityLabel={label ?? props.placeholder}
         placeholderTextColor={colors.textTertiary}
+        keyboardAppearance={scheme}
+        selectionColor={colors.tint}
         multiline={multiline}
         style={[
           styles.input,

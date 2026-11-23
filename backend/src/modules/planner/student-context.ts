@@ -21,7 +21,8 @@ export class StudentContext {
 
   async load(userId: string): Promise<StudentDay> {
     const profile = await this.profiles.findByUser(userId);
-    if (!profile) throw new NotFoundError('Finish setting up your planner first', 'ONBOARDING_REQUIRED');
+    if (!profile)
+      throw new NotFoundError('Finish setting up your planner first', 'ONBOARDING_REQUIRED');
     return { profile, ...this.today(profile.timezone) };
   }
 

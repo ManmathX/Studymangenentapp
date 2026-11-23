@@ -10,7 +10,11 @@ export function createRedisClient(url: string | undefined, logger: Logger): Redi
     logger.info('REDIS_URL not set; rate limits use in-memory storage');
     return undefined;
   }
-  const client = new Redis(url, { maxRetriesPerRequest: 2, enableOfflineQueue: false, lazyConnect: true });
+  const client = new Redis(url, {
+    maxRetriesPerRequest: 2,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+  });
   client.on('error', (error: Error) => logger.error({ err: error }, 'Redis error'));
   client.on('ready', () => logger.info('Redis connected'));
   return client;

@@ -20,10 +20,21 @@ export interface HomeworkRepository {
   insertMany(userId: string, homework: NewHomework[], tx: TxHandle): Promise<HomeworkRecord[]>;
   findById(userId: string, id: string): Promise<HomeworkRecord | null>;
   listOpen(userId: string): Promise<HomeworkRecord[]>;
-  pageByStatus(userId: string, done: boolean, query: PaginationQuery): Promise<{ items: HomeworkRecord[]; total: number }>;
+  pageByStatus(
+    userId: string,
+    done: boolean,
+    query: PaginationQuery,
+  ): Promise<{ items: HomeworkRecord[]; total: number }>;
   findDueOn(userId: string, date: string): Promise<HomeworkRecord[]>;
   countDoneSince(userId: string, fromDate: string): Promise<number>;
-  setDone(userId: string, id: string, done: boolean, doneOn: string | null, tx?: TxHandle): Promise<HomeworkRecord | null>;
+  setDone(
+    userId: string,
+    id: string,
+    done: boolean,
+    doneOn: string | null,
+    tx?: TxHandle,
+  ): Promise<HomeworkRecord | null>;
+  delete(userId: string, id: string, tx: TxHandle): Promise<boolean>;
   deleteByUser(userId: string, tx: TxHandle): Promise<void>;
 }
 
@@ -45,20 +56,32 @@ function toRecord(doc: HomeworkDocument): HomeworkRecord {
 
 export class MongoHomeworkRepository implements HomeworkRepository {
   async create(userId: string, homework: NewHomework, tx?: TxHandle): Promise<HomeworkRecord> {
-    const [doc] = await HomeworkModel.create([{ ...homework, userId: toObjectId(userId) }], { session: tx });
+    const [doc] = await HomeworkModel.create([{ ...homework, userId: toObjectId(userId) }], {
+      session: tx,
+    });
     if (!doc) throw new Error('Homework insert returned no document');
     return toRecord(doc.toObject());
   }
 
-  async insertMany(userId: string, homework: NewHomework[], tx: TxHandle): Promise<HomeworkRecord[]> {
+  async insertMany(
+    userId: string,
+    homework: NewHomework[],
+    tx: TxHandle,
+  ): Promise<HomeworkRecord[]> {
     if (!homework.length) return [];
     const owner = toObjectId(userId);
-    const docs = await HomeworkModel.insertMany(homework.map((item) => ({ ...item, userId: owner })), { session: tx });
+    const docs = await HomeworkModel.insertMany(
+      homework.map((item) => ({ ...item, userId: owner })),
+      { session: tx },
+    );
     return docs.map((doc) => toRecord(doc.toObject()));
   }
 
   async findById(userId: string, id: string): Promise<HomeworkRecord | null> {
-    const doc = await HomeworkModel.findOne({ _id: toObjectId(id), userId: toObjectId(userId) }).lean<HomeworkDocument>();
+    const doc = await HomeworkModel.findOne({
+      _id: toObjectId(id),
+      userId: toObjectId(userId),
+    }).lean<HomeworkDocument>();
     return doc ? toRecord(doc) : null;
   }
 
@@ -70,32 +93,60 @@ export class MongoHomeworkRepository implements HomeworkRepository {
     return docs.map(toRecord);
   }
 
-  async pageByStatus(userId: string, done: boolean, query: PaginationQuery): Promise<{ items: HomeworkRecord[]; total: number }> {
+  async pageByStatus(
+    userId: string,
+    done: boolean,
+    query: PaginationQuery,
+  ): Promise<{ items: HomeworkRecord[]; total: number }> {
     const filter = { userId: toObjectId(userId), done };
     const sort: Record<string, 1 | -1> = done ? { doneOn: -1, _id: -1 } : { due: 1, _id: 1 };
     const [docs, total] = await Promise.all([
-      HomeworkModel.find(filter).sort(sort).skip(skipFor(query)).limit(query.limit).lean<HomeworkDocument[]>(),
+      HomeworkModel.find(filter)
+        .sort(sort)
+        .skip(skipFor(query))
+        .limit(query.limit)
+        .lean<HomeworkDocument[]>(),
       HomeworkModel.countDocuments(filter),
     ]);
     return { items: docs.map(toRecord), total };
   }
 
   async findDueOn(userId: string, date: string): Promise<HomeworkRecord[]> {
-    const docs = await HomeworkModel.find({ userId: toObjectId(userId), due: date }).limit(50).lean<HomeworkDocument[]>();
+    const docs = await HomeworkModel.find({ userId: toObjectId(userId), due: date })
+      .limit(50)
+      .lean<HomeworkDocument[]>();
     return docs.map(toRecord);
   }
 
   async countDoneSince(userId: string, fromDate: string): Promise<number> {
-    return HomeworkModel.countDocuments({ userId: toObjectId(userId), done: true, doneOn: { $gte: fromDate } });
+    return HomeworkModel.countDocuments({
+      userId: toObjectId(userId),
+      done: true,
+      doneOn: { $gte: fromDate },
+    });
   }
 
-  async setDone(userId: string, id: string, done: boolean, doneOn: string | null, tx?: TxHandle): Promise<HomeworkRecord | null> {
+  async setDone(
+    userId: string,
+    id: string,
+    done: boolean,
+    doneOn: string | null,
+    tx?: TxHandle,
+  ): Promise<HomeworkRecord | null> {
     const doc = await HomeworkModel.findOneAndUpdate(
       { _id: toObjectId(id), userId: toObjectId(userId) },
       { $set: { done, doneOn } },
       { new: true, session: tx },
     ).lean<HomeworkDocument>();
     return doc ? toRecord(doc) : null;
+  }
+
+  async delete(userId: string, id: string, tx: TxHandle): Promise<boolean> {
+    const result = await HomeworkModel.deleteOne(
+      { _id: toObjectId(id), userId: toObjectId(userId) },
+      { session: tx },
+    );
+    return result.deletedCount === 1;
   }
 
   async deleteByUser(userId: string, tx: TxHandle): Promise<void> {

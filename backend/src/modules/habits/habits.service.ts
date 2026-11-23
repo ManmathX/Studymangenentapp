@@ -1,14 +1,25 @@
-import { BadRequestError, ConflictError } from '../../common/errors/app-error.js';
+import {
+  BadRequestError,
+  ConflictError,
+  UnprocessableError,
+} from '../../common/errors/app-error.js';
 import { addDays } from '../../common/utils/dates.js';
 import { bagFor, nextSchoolDay, periodsFor } from '../planner/planner.engine.js';
 import type { StudentContext } from '../planner/student-context.js';
-import { isSubjectPeriod, PERIOD_LABELS, SUBJECTS, type SubjectId } from '../syllabus/syllabus.data.js';
+import {
+  isSubjectPeriod,
+  PERIOD_LABELS,
+  SUBJECTS,
+  type SubjectId,
+} from '../syllabus/syllabus.data.js';
 import type { HomeworkRepository } from '../homework/homework.repository.js';
 import type { TaskRepository } from '../tasks/task.repository.js';
 import type { CheckIn, Routines, ScreenTime } from './daily-log.model.js';
 import type { HabitsRepository } from './habits.repository.js';
 
 export const MAX_REST_DAYS_PER_WEEK = 2;
+/** Sanity bound so streaks and study hours can't be inflated by bogus sessions. */
+export const MAX_FOCUS_MINUTES_PER_DAY = 720;
 const BAG_DAYS_AHEAD = 7;
 
 export class HabitsService {
@@ -21,8 +32,21 @@ export class HabitsService {
 
   async logFocus(userId: string, input: { subject: SubjectId; mins: number }) {
     const ctx = await this.context.load(userId);
-    if (!ctx.profile.subjects.includes(input.subject)) throw new BadRequestError('That subject is turned off', 'SUBJECT_NOT_SELECTED');
-    return this.habits.addFocusSession(userId, { date: ctx.today, subject: input.subject, mins: input.mins });
+    if (!ctx.profile.subjects.includes(input.subject))
+      throw new BadRequestError('That subject is turned off', 'SUBJECT_NOT_SELECTED');
+    const loggedToday =
+      (await this.habits.focusMinutesByDay(userId, ctx.today, ctx.today)).get(ctx.today) ?? 0;
+    if (loggedToday + input.mins > MAX_FOCUS_MINUTES_PER_DAY) {
+      throw new UnprocessableError(
+        `Focus time is capped at ${MAX_FOCUS_MINUTES_PER_DAY / 60} hours a day`,
+        'FOCUS_LIMIT_REACHED',
+      );
+    }
+    return this.habits.addFocusSession(userId, {
+      date: ctx.today,
+      subject: input.subject,
+      mins: input.mins,
+    });
   }
 
   /** Rest days keep the streak alive, at most two a week and only before any study that day. */
@@ -35,9 +59,13 @@ export class HabitsService {
       this.habits.focusMinutesByDay(userId, ctx.today, ctx.today),
     ]);
     if ((doneMins.get(ctx.today) ?? 0) + (focusMins.get(ctx.today) ?? 0) > 0) {
-      throw new ConflictError('You already studied today, so it counts as a study day', 'ALREADY_STUDIED');
+      throw new ConflictError(
+        'You already studied today, so it counts as a study day',
+        'ALREADY_STUDIED',
+      );
     }
-    if (logs.some((log) => log.date === ctx.today && log.rest)) throw new ConflictError('Today is already a rest day', 'ALREADY_RESTING');
+    if (logs.some((log) => log.date === ctx.today && log.rest))
+      throw new ConflictError('Today is already a rest day', 'ALREADY_RESTING');
     if (logs.filter((log) => log.rest).length >= MAX_REST_DAYS_PER_WEEK) {
       throw new ConflictError('You have used both rest days this week', 'REST_LIMIT_REACHED');
     }
@@ -60,9 +88,15 @@ export class HabitsService {
     const ctx = await this.context.load(userId);
     const day = date ?? nextSchoolDay(ctx.today);
     this.assertBagDay(day, ctx.today);
-    const [dueThatDay, log] = await Promise.all([this.homework.findDueOn(userId, day), this.habits.findLog(userId, day)]);
+    const [dueThatDay, log] = await Promise.all([
+      this.homework.findDueOn(userId, day),
+      this.habits.findLog(userId, day),
+    ]);
     const checked = log?.bag ?? {};
-    const items = bagFor(day, dueThatDay.filter((item) => !item.done)).map((item) => ({ ...item, checked: Boolean(checked[item.id]) }));
+    const items = bagFor(
+      day,
+      dueThatDay.filter((item) => !item.done),
+    ).map((item) => ({ ...item, checked: Boolean(checked[item.id]) }));
     return {
       date: day,
       periods: periodsFor(day).map((period, index) => ({
@@ -77,7 +111,8 @@ export class HabitsService {
 
   async setBagItem(userId: string, date: string, itemId: string, checked: boolean) {
     const current = await this.bag(userId, date);
-    if (!current.items.some((item) => item.id === itemId)) throw new BadRequestError('That item is not on this day’s list', 'UNKNOWN_BAG_ITEM');
+    if (!current.items.some((item) => item.id === itemId))
+      throw new BadRequestError('That item is not on this day’s list', 'UNKNOWN_BAG_ITEM');
     await this.habits.upsertLog(userId, date, { bag: { [itemId]: checked } });
     return this.bag(userId, date);
   }

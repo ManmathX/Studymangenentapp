@@ -24,7 +24,10 @@ export interface TaskRecord {
   homeworkId: string | null;
 }
 
-export type NewTask = Omit<TaskRecord, 'id' | 'order' | 'done' | 'why' | 'chapterKey' | 'homeworkId'> &
+export type NewTask = Omit<
+  TaskRecord,
+  'id' | 'order' | 'done' | 'why' | 'chapterKey' | 'homeworkId'
+> &
   Partial<Pick<TaskRecord, 'done' | 'why' | 'chapterKey' | 'homeworkId'>>;
 
 export interface TaskPatch {
@@ -53,9 +56,19 @@ export interface TaskRepository {
   liveHomeworkIds(userId: string): Promise<Set<string>>;
   update(userId: string, id: string, patch: TaskPatch, tx?: TxHandle): Promise<TaskRecord | null>;
   acceptSuggestedFrom(userId: string, from: string): Promise<number>;
-  skipSuggestedForHomework(userId: string, homeworkId: string, from: string, tx?: TxHandle): Promise<void>;
+  skipSuggestedForHomework(
+    userId: string,
+    homeworkId: string,
+    from: string,
+    tx?: TxHandle,
+  ): Promise<void>;
   page(userId: string, query: TaskPageQuery): Promise<{ items: TaskRecord[]; total: number }>;
   doneMinutesByDay(userId: string, from: string, to: string): Promise<Map<string, number>>;
+  /**
+   * For deleted homework: removes its unfinished tasks and detaches finished ones,
+   * so study time already logged stays in the history.
+   */
+  releaseHomework(userId: string, homeworkId: string, tx: TxHandle): Promise<void>;
   deleteByUser(userId: string, tx: TxHandle): Promise<void>;
 }
 
@@ -80,8 +93,20 @@ function toRecord(doc: TaskDocument): TaskRecord {
 }
 
 const FIELDS = {
-  date: 1, subject: 1, title: 1, kind: 1, mins: 1, done: 1, source: 1, status: 1,
-  score: 1, order: 1, deadline: 1, why: 1, chapterKey: 1, homeworkId: 1,
+  date: 1,
+  subject: 1,
+  title: 1,
+  kind: 1,
+  mins: 1,
+  done: 1,
+  source: 1,
+  status: 1,
+  score: 1,
+  order: 1,
+  deadline: 1,
+  why: 1,
+  chapterKey: 1,
+  homeworkId: 1,
 } as const;
 
 export class MongoTaskRepository implements TaskRepository {
@@ -109,12 +134,18 @@ export class MongoTaskRepository implements TaskRepository {
   }
 
   async findById(userId: string, id: string): Promise<TaskRecord | null> {
-    const doc = await TaskModel.findOne({ _id: toObjectId(id), userId: toObjectId(userId) }, FIELDS).lean<TaskDocument>();
+    const doc = await TaskModel.findOne(
+      { _id: toObjectId(id), userId: toObjectId(userId) },
+      FIELDS,
+    ).lean<TaskDocument>();
     return doc ? toRecord(doc) : null;
   }
 
   async findInRange(userId: string, from: string, to: string): Promise<TaskRecord[]> {
-    const docs = await TaskModel.find({ userId: toObjectId(userId), date: { $gte: from, $lte: to } }, FIELDS)
+    const docs = await TaskModel.find(
+      { userId: toObjectId(userId), date: { $gte: from, $lte: to } },
+      FIELDS,
+    )
       .sort({ date: 1, order: 1 })
       .limit(RANGE_LIMIT)
       .lean<TaskDocument[]>();
@@ -122,7 +153,10 @@ export class MongoTaskRepository implements TaskRepository {
   }
 
   async findLiveFrom(userId: string, from: string): Promise<TaskRecord[]> {
-    const docs = await TaskModel.find({ userId: toObjectId(userId), date: { $gte: from }, status: { $ne: 'skipped' } }, FIELDS)
+    const docs = await TaskModel.find(
+      { userId: toObjectId(userId), date: { $gte: from }, status: { $ne: 'skipped' } },
+      FIELDS,
+    )
       .sort({ date: 1, order: 1 })
       .limit(RANGE_LIMIT)
       .lean<TaskDocument[]>();
@@ -131,7 +165,12 @@ export class MongoTaskRepository implements TaskRepository {
 
   async findSlipped(userId: string, from: string, before: string): Promise<TaskRecord[]> {
     const docs = await TaskModel.find(
-      { userId: toObjectId(userId), status: 'accepted', done: false, date: { $gte: from, $lt: before } },
+      {
+        userId: toObjectId(userId),
+        status: 'accepted',
+        done: false,
+        date: { $gte: from, $lt: before },
+      },
       FIELDS,
     )
       .sort({ date: 1, order: 1 })
@@ -140,9 +179,19 @@ export class MongoTaskRepository implements TaskRepository {
     return docs.map(toRecord);
   }
 
-  async findLiveForChapter(userId: string, chapterKey: string, from: string): Promise<TaskRecord[]> {
+  async findLiveForChapter(
+    userId: string,
+    chapterKey: string,
+    from: string,
+  ): Promise<TaskRecord[]> {
     const docs = await TaskModel.find(
-      { userId: toObjectId(userId), chapterKey, date: { $gte: from }, status: { $ne: 'skipped' }, done: false },
+      {
+        userId: toObjectId(userId),
+        chapterKey,
+        date: { $gte: from },
+        status: { $ne: 'skipped' },
+        done: false,
+      },
       FIELDS,
     )
       .sort({ date: 1 })
@@ -157,10 +206,19 @@ export class MongoTaskRepository implements TaskRepository {
       homeworkId: { $ne: null },
       status: { $ne: 'skipped' },
     });
-    return new Set(ids.filter((id): id is Types.ObjectId => id instanceof Types.ObjectId).map((id) => id.toHexString()));
+    return new Set(
+      ids
+        .filter((id): id is Types.ObjectId => id instanceof Types.ObjectId)
+        .map((id) => id.toHexString()),
+    );
   }
 
-  async update(userId: string, id: string, patch: TaskPatch, tx?: TxHandle): Promise<TaskRecord | null> {
+  async update(
+    userId: string,
+    id: string,
+    patch: TaskPatch,
+    tx?: TxHandle,
+  ): Promise<TaskRecord | null> {
     const doc = await TaskModel.findOneAndUpdate(
       { _id: toObjectId(id), userId: toObjectId(userId) },
       { $set: patch },
@@ -177,18 +235,35 @@ export class MongoTaskRepository implements TaskRepository {
     return result.modifiedCount;
   }
 
-  async skipSuggestedForHomework(userId: string, homeworkId: string, from: string, tx?: TxHandle): Promise<void> {
+  async skipSuggestedForHomework(
+    userId: string,
+    homeworkId: string,
+    from: string,
+    tx?: TxHandle,
+  ): Promise<void> {
     await TaskModel.updateMany(
-      { userId: toObjectId(userId), homeworkId: toObjectId(homeworkId), status: 'suggested', done: false, date: { $gte: from } },
+      {
+        userId: toObjectId(userId),
+        homeworkId: toObjectId(homeworkId),
+        status: 'suggested',
+        done: false,
+        date: { $gte: from },
+      },
       { $set: { status: 'skipped' } },
       { session: tx },
     );
   }
 
-  async page(userId: string, query: TaskPageQuery): Promise<{ items: TaskRecord[]; total: number }> {
+  async page(
+    userId: string,
+    query: TaskPageQuery,
+  ): Promise<{ items: TaskRecord[]; total: number }> {
     const filter: Record<string, unknown> = { userId: toObjectId(userId) };
     if (query.from || query.to) {
-      filter.date = { ...(query.from ? { $gte: query.from } : {}), ...(query.to ? { $lte: query.to } : {}) };
+      filter.date = {
+        ...(query.from ? { $gte: query.from } : {}),
+        ...(query.to ? { $lte: query.to } : {}),
+      };
     }
     if (query.status) filter.status = query.status;
     const direction = query.sort === '-date' ? -1 : 1;
@@ -205,10 +280,28 @@ export class MongoTaskRepository implements TaskRepository {
 
   async doneMinutesByDay(userId: string, from: string, to: string): Promise<Map<string, number>> {
     const rows = await TaskModel.aggregate<{ _id: string; mins: number }>([
-      { $match: { userId: toObjectId(userId), done: true, status: { $ne: 'skipped' }, date: { $gte: from, $lte: to } } },
+      {
+        $match: {
+          userId: toObjectId(userId),
+          done: true,
+          status: { $ne: 'skipped' },
+          date: { $gte: from, $lte: to },
+        },
+      },
       { $group: { _id: '$date', mins: { $sum: '$mins' } } },
     ]);
     return new Map(rows.map((row) => [row._id, row.mins]));
+  }
+
+  async releaseHomework(userId: string, homeworkId: string, tx: TxHandle): Promise<void> {
+    const filter = { userId: toObjectId(userId), homeworkId: toObjectId(homeworkId) };
+    // Operations inside one transaction must run one after another.
+    await TaskModel.deleteMany({ ...filter, done: false }, { session: tx });
+    await TaskModel.updateMany(
+      { ...filter, done: true },
+      { $set: { homeworkId: null } },
+      { session: tx },
+    );
   }
 
   async deleteByUser(userId: string, tx: TxHandle): Promise<void> {

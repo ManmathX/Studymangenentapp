@@ -49,10 +49,12 @@ export function FocusTimer({ subjects }) {
           testID="timer-toggle"
         />
       </View>
-      <View style={styles.fast}>
-        <Switch value={timer.fastForward} onValueChange={timer.setFastForward} accessibilityLabel="Fast-forward the timer 60 times for this demo" />
-        <Text style={{ color: colors.textSecondary }}>Fast-forward for this demo (60×)</Text>
-      </View>
+      {__DEV__ ? (
+        <View style={styles.fast}>
+          <Switch value={timer.fastForward} onValueChange={timer.setFastForward} accessibilityLabel="Fast-forward the timer 60 times (development builds only)" />
+          <Text style={{ color: colors.textSecondary }}>Fast-forward 60× (dev only)</Text>
+        </View>
+      ) : null}
     </Section>
   );
 }

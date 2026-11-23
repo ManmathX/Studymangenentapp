@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
-import { ActivityIndicator, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, SectionList, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/ui/Button';
 import { CheckRow } from '../../components/ui/Controls';
+import { ThemedRefreshControl } from '../../components/ui/Layout';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { usePagedList } from '../../hooks/usePagedList';
@@ -30,6 +31,8 @@ export function HomeworkScreen({ navigation }) {
   const bag = useResource(resources.bag);
   const done = usePagedList(loadDonePage);
   const toggle = useAsyncAction(homeworkActions.toggleDone);
+  const remove = useAsyncAction(homeworkActions.remove);
+  const busy = toggle.pending || remove.pending;
   const today = summary.data?.today;
 
   const sections = useMemo(() => {
@@ -44,8 +47,8 @@ export function HomeworkScreen({ navigation }) {
 
   const renderItem = useCallback(
     ({ item, section }) =>
-      section.kind === 'bag' ? <BagCard bag={item} /> : <HomeworkRow item={item} today={today} onToggle={toggle.execute} disabled={toggle.pending} />,
-    [today, toggle.execute, toggle.pending],
+      section.kind === 'bag' ? <BagCard bag={item} /> : <HomeworkRow item={item} today={today} onToggle={toggle.execute} onDelete={remove.execute} disabled={busy} />,
+    [today, toggle.execute, remove.execute, busy],
   );
 
   const refresh = useCallback(() => {
@@ -70,10 +73,10 @@ export function HomeworkScreen({ navigation }) {
       renderSectionHeader={({ section }) => <SectionHeader title={section.title} meta={section.meta ?? (section.key === 'done' ? '' : String(section.data.length))} />}
       renderSectionFooter={({ section }) => (section.empty && !section.data.length ? <EmptyState message={section.empty} /> : null)}
       ListHeaderComponent={<Header summary={summary.data} onAdd={() => navigation.navigate('NewHomework')} />}
-      ListFooterComponent={done.loading ? <ActivityIndicator style={styles.footer} /> : done.error ? <ErrorState error={done.error} onRetry={done.loadMore} /> : null}
+      ListFooterComponent={done.loading ? <ActivityIndicator style={styles.footer} /> : done.error ? <ErrorState error={done.error} onRetry={done.retry} /> : null}
       onEndReached={done.loadMore}
       onEndReachedThreshold={0.4}
-      refreshControl={<RefreshControl refreshing={summary.isRefreshing || open.isRefreshing} onRefresh={refresh} />}
+      refreshControl={<ThemedRefreshControl refreshing={summary.isRefreshing || open.isRefreshing} onRefresh={refresh} />}
       initialNumToRender={12}
       windowSize={7}
     />

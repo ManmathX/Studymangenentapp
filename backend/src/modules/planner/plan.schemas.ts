@@ -27,7 +27,12 @@ const fixedRowSchema = z.object({
   label: z.string(),
   kind: z.enum(['school', 'rest', 'tuition']),
 });
-const taskRowSchema = z.object({ type: z.literal('task'), start: z.number().int(), end: z.number().int(), task: taskSchema });
+const taskRowSchema = z.object({
+  type: z.literal('task'),
+  start: z.number().int(),
+  end: z.number().int(),
+  task: taskSchema,
+});
 
 export const planDaySchema = z
   .object({
@@ -40,7 +45,9 @@ export const planDaySchema = z
     tuitionDay: z.boolean(),
     rows: z.array(z.union([fixedRowSchema, taskRowSchema])),
     overflow: z.array(taskSchema),
-    moveSuggestion: z.object({ taskId: z.string(), title: z.string(), toDate: z.string() }).nullable(),
+    moveSuggestion: z
+      .object({ taskId: z.string(), title: z.string(), toDate: z.string() })
+      .nullable(),
     suggestedCount: z.number().int(),
     dayOptions: z.array(z.string()),
   })
@@ -50,4 +57,6 @@ export const scheduleResultSchema = z
   .object({ added: z.number().int(), firstDate: z.string().nullable() })
   .openapi('ScheduleResult');
 
-export const acceptAllResultSchema = z.object({ accepted: z.number().int() }).openapi('AcceptAllResult');
+export const acceptAllResultSchema = z
+  .object({ accepted: z.number().int() })
+  .openapi('AcceptAllResult');

@@ -26,7 +26,7 @@ export function TodayScreen({ navigation }) {
 }
 
 function TodayContent({ data, navigation }) {
-  const openPlan = useCallback((date) => navigation.navigate('Plan', { date }), [navigation]);
+  const openPlan = useCallback((date) => navigation.navigate('Plan', { date, at: Date.now() }), [navigation]);
   return (
     <>
       <NextTest exam={data.nextExam} navigation={navigation} />
@@ -109,9 +109,9 @@ function Summary({ data }) {
       <View style={styles.summaryRow}>
         <Rings values={values} />
         <View style={styles.ringLabels}>
-          <RingLabel color="#D70F45" label="Tasks" value={`${data.doneCount}/${total}`} />
+          <RingLabel color={rings.tasks} label="Tasks" value={`${data.doneCount}/${total}`} />
           <RingLabel color={colors.successInk} label="Focus" value={`${data.focusTodayMins}/60`} unit="MIN" />
-          <RingLabel color="#0090AE" label="This week" value={`${hours(data.weekMins)}/${hours(data.weeklyGoalMins)}`} unit="H" />
+          <RingLabel color={rings.week} label="This week" value={`${hours(data.weekMins)}/${hours(data.weeklyGoalMins)}`} unit="H" />
         </View>
       </View>
       <View style={[styles.streak, { borderTopColor: colors.separator }]}>
@@ -173,7 +173,7 @@ function WaitingSuggestions({ suggestions, today, laterCount }) {
   const busy = useAsyncAction(async (action, item) => action(item, today));
   if (!suggestions.length) return null;
   return (
-    <Section title="Waiting for you" meta={String(suggestions.length)} bare footer={`Nothing changes in your plan until you accept.${laterCount ? ` ${laterCount} saved for later in Privacy.` : ''}`}>
+    <Section title="Waiting for you" meta={String(suggestions.length)} bare footer={`Nothing changes in your plan until you accept.${laterCount ? ` ${laterCount} saved for later in Settings.` : ''}`}>
       <View style={{ gap: 10 }}>
         {suggestions.map((item) => (
           <SuggestionCard

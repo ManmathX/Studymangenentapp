@@ -4,6 +4,7 @@ import { toast } from '../store/toastStore';
 import { dayName, duration } from '../utils/format';
 import { chaptersApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, tasksApi } from './api/endpoints';
 import { chapterStatus } from '../theme/tokens';
+import { confirmAction } from '../utils/confirm';
 
 /**
  * Every change the app can make. Each action calls the API, refreshes whatever is
@@ -40,7 +41,7 @@ export const suggestionActions = {
     run(() => suggestionsApi.accept(item.id), {
       success: item.kind === 'move' ? `Moved to ${dayName(item.date, today)}.` : `Added to ${dayName(item.date, today)}.`,
     }),
-  later: (item) => run(() => suggestionsApi.later(item.id), { success: 'Saved for later. Find it in Privacy.' }),
+  later: (item) => run(() => suggestionsApi.later(item.id), { success: 'Saved for later. Find it in Settings.' }),
   skip: (item) => run(() => suggestionsApi.skip(item.id), { success: 'Skipped. Your plan stays as it is.' }),
   swap: (item, today) => run(() => suggestionsApi.swap(item.id), { success: (updated) => `Swapped to ${dayName(updated.date, today)}.` }),
 };
@@ -72,6 +73,15 @@ export const chapterActions = {
 
 export const examActions = {
   create: (body) => run(() => examsApi.create(body), { success: `${body.name} added. Tap "Fill free slots before exams" to plan revision.` }),
+  async remove(exam) {
+    const confirmed = await confirmAction({
+      title: `Remove ${exam.name}?`,
+      message: 'The test is removed from your plan. Study blocks you already added stay.',
+      confirmLabel: 'Remove',
+    });
+    if (!confirmed) return null;
+    return run(() => examsApi.remove(exam.id), { success: `${exam.name} removed.` });
+  },
 };
 
 export const homeworkActions = {
@@ -81,6 +91,14 @@ export const homeworkActions = {
     }),
   toggleDone: (item) =>
     run(() => homeworkApi.setDone(item.id, !item.done), { success: item.done ? 'Moved back to pending.' : 'Homework marked done.' }),
+  async remove(item) {
+    const confirmed = await confirmAction({
+      title: 'Delete this homework?',
+      message: `“${item.title}” and its unfinished study task will be deleted. Time you already studied stays in your history.`,
+    });
+    if (!confirmed) return null;
+    return run(() => homeworkApi.remove(item.id), { success: 'Homework deleted.' });
+  },
 };
 
 export const habitActions = {

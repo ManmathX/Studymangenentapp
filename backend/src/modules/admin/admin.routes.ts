@@ -1,4 +1,4 @@
-import { NotFoundError } from '../../common/errors/app-error.js';
+import { ConflictError, NotFoundError } from '../../common/errors/app-error.js';
 import { PageResult, paginationQuerySchema } from '../../common/http/page.js';
 import { defineRoute, type Route } from '../../common/http/route.js';
 import { z } from '../../common/zod.js';
@@ -9,10 +9,22 @@ import { userSchema } from '../auth/auth.schemas.js';
 import type { UserRepository } from '../users/user.repository.js';
 
 const auditSchema = z
-  .object({ id: z.string(), userId: z.string().nullable(), action: z.string(), ip: z.string(), requestId: z.string(), meta: z.record(z.string(), z.unknown()), at: z.string() })
+  .object({
+    id: z.string(),
+    userId: z.string().nullable(),
+    action: z.string(),
+    ip: z.string(),
+    requestId: z.string(),
+    meta: z.record(z.string(), z.unknown()),
+    at: z.string(),
+  })
   .openapi('AuditLog');
 
-export function adminRoutes(users: UserRepository, audit: AuditRepository, auditSink: AuditSink): Route[] {
+export function adminRoutes(
+  users: UserRepository,
+  audit: AuditRepository,
+  auditSink: AuditSink,
+): Route[] {
   const tags = ['Admin'];
   return [
     defineRoute({
@@ -42,9 +54,16 @@ export function adminRoutes(users: UserRepository, audit: AuditRepository, audit
       body: z.strictObject({ role: z.enum(['student', 'admin']) }),
       response: userSchema,
       handler: async ({ params, body, auth, meta }) => {
+        // Stops an admin from locking every admin out by demoting themselves.
+        if (params.id === auth.userId) {
+          throw new ConflictError('Ask another admin to change your own role', 'OWN_ROLE');
+        }
         const updated = await users.setRole(params.id, body.role);
         if (!updated) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
-        await auditSink.record('admin.role_changed', auth.userId, meta, { target: params.id, role: body.role });
+        await auditSink.record('admin.role_changed', auth.userId, meta, {
+          target: params.id,
+          role: body.role,
+        });
         return updated;
       },
     }),
@@ -54,7 +73,10 @@ export function adminRoutes(users: UserRepository, audit: AuditRepository, audit
       access: 'admin',
       summary: 'Security audit trail, newest first (admin only)',
       tags,
-      query: paginationQuerySchema.extend({ action: z.string().max(60).optional(), userId: objectIdSchema.optional() }),
+      query: paginationQuerySchema.extend({
+        action: z.string().max(60).optional(),
+        userId: objectIdSchema.optional(),
+      }),
       response: auditSchema,
       paginated: true,
       handler: async ({ query }) => {

@@ -1,6 +1,12 @@
 import { ScrollView, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 
+/** Pull-to-refresh spinner coloured for the current light or dark scheme. */
+export function ThemedRefreshControl(props) {
+  const { colors } = useTheme();
+  return <RefreshControl tintColor={colors.textSecondary} colors={[colors.tint]} progressBackgroundColor={colors.card} {...props} />;
+}
+
 /** Scrollable page with pull-to-refresh and a readable max width on tablets and web. */
 export function Screen({ children, refreshing = false, onRefresh, testID }) {
   const { colors, layout } = useTheme();
@@ -9,7 +15,7 @@ export function Screen({ children, refreshing = false, onRefresh, testID }) {
       testID={testID}
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={[styles.content, { maxWidth: layout.maxContentWidth }]}
-      refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
+      refreshControl={onRefresh ? <ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
       keyboardShouldPersistTaps="handled"
     >
       {children}

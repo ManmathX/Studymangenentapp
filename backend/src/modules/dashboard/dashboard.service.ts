@@ -4,7 +4,14 @@ import type { ExamRepository } from '../exams/exam.repository.js';
 import type { ExamService } from '../exams/exam.service.js';
 import type { HabitsRepository } from '../habits/habits.repository.js';
 import { MAX_REST_DAYS_PER_WEEK } from '../habits/habits.service.js';
-import { coverage, DayLoad, dueRevisionNudges, layoutDay, limitFor, sortDayTasks } from '../planner/planner.engine.js';
+import {
+  coverage,
+  DayLoad,
+  dueRevisionNudges,
+  layoutDay,
+  limitFor,
+  sortDayTasks,
+} from '../planner/planner.engine.js';
 import { REVISION_INTERVALS } from '../planner/planner.types.js';
 import type { StudentContext } from '../planner/student-context.js';
 import type { SuggestionRepository } from '../suggestions/suggestion.repository.js';
@@ -49,12 +56,22 @@ export class DashboardService {
     const load = new DayLoad(windowTasks);
     const todayTasks = windowTasks.filter((task) => task.date === ctx.today);
     const layout = layoutDay(ctx.profile, ctx.today, todayTasks);
-    const startOf = new Map(layout.rows.flatMap((row) => (row.type === 'task' ? [[row.task.id, row.start] as const] : [])));
+    const startOf = new Map(
+      layout.rows.flatMap((row) =>
+        row.type === 'task' ? [[row.task.id, row.start] as const] : [],
+      ),
+    );
     const mine = sortDayTasks(todayTasks.filter((task) => task.status === 'accepted'));
     const suggested = windowTasks.filter((task) => task.status === 'suggested');
-    const heavyDate = [...eachDay(ctx.today, addDays(ctx.today, HEAVY_DAY_LOOKAHEAD - 1))].find((date) => load.isOverloaded(ctx.profile, date));
-    const weekMins = [...eachDay(addDays(ctx.today, -6), ctx.today)].reduce((sum, date) => sum + activity.minutesOn(date), 0);
-    const focusTodayMins = (await this.habits.focusMinutesByDay(userId, ctx.today, ctx.today)).get(ctx.today) ?? 0;
+    const heavyDate = [...eachDay(ctx.today, addDays(ctx.today, HEAVY_DAY_LOOKAHEAD - 1))].find(
+      (date) => load.isOverloaded(ctx.profile, date),
+    );
+    const weekMins = [...eachDay(addDays(ctx.today, -6), ctx.today)].reduce(
+      (sum, date) => sum + activity.minutesOn(date),
+      0,
+    );
+    const focusTodayMins =
+      (await this.habits.focusMinutesByDay(userId, ctx.today, ctx.today)).get(ctx.today) ?? 0;
 
     return {
       today: ctx.today,
@@ -74,7 +91,13 @@ export class DashboardService {
         count: suggested.length,
         firstDate: suggested.map((task) => task.date).sort()[0] ?? null,
       },
-      heavyDay: heavyDate ? { date: heavyDate, plannedMins: load.planned(heavyDate), limitMins: limitFor(ctx.profile, heavyDate) } : null,
+      heavyDay: heavyDate
+        ? {
+            date: heavyDate,
+            plannedMins: load.planned(heavyDate),
+            limitMins: limitFor(ctx.profile, heavyDate),
+          }
+        : null,
       suggestions: openSuggestions.filter((item) => item.state === 'pending'),
       laterCount: openSuggestions.filter((item) => item.state === 'later').length,
     };
@@ -88,7 +111,10 @@ export class DashboardService {
       this.tasks.findSlipped(userId, addDays(ctx.today, -SLIPPED_LOOKBACK_DAYS), ctx.today),
       loadActivity(userId, ctx, this.repos),
     ]);
-    const last7 = [...eachDay(addDays(ctx.today, -6), ctx.today)].map((date) => ({ date, mins: activity.minutesOn(date) }));
+    const last7 = [...eachDay(addDays(ctx.today, -6), ctx.today)].map((date) => ({
+      date,
+      mins: activity.minutesOn(date),
+    }));
     return {
       today: ctx.today,
       ageMode: ctx.profile.ageMode,
@@ -119,16 +145,26 @@ export class DashboardService {
     return {
       today: ctx.today,
       streak: activity.streak,
-      calendar: [...eachDay(calendarStart, ctx.today)].map((date) => ({ date, state: activity.stateOf(date) })),
+      calendar: [...eachDay(calendarStart, ctx.today)].map((date) => ({
+        date,
+        state: activity.stateOf(date),
+      })),
       restDaysThisWeek: activity.restDaysThisWeek,
       maxRestDaysPerWeek: MAX_REST_DAYS_PER_WEEK,
-      canRestToday: !studiedToday && !restingToday && activity.restDaysThisWeek < MAX_REST_DAYS_PER_WEEK,
+      canRestToday:
+        !studiedToday && !restingToday && activity.restDaysThisWeek < MAX_REST_DAYS_PER_WEEK,
       focusSessions: sessions,
       focusTodayMins: sessions.reduce((sum, session) => sum + session.mins, 0),
       checkin: log?.checkin ?? DEFAULT_CHECKIN,
       routines: {
-        morning: ROUTINES.morning.map((label, index) => ({ label, done: Boolean(log?.routines?.morning[index]) })),
-        evening: ROUTINES.evening.map((label, index) => ({ label, done: Boolean(log?.routines?.evening[index]) })),
+        morning: ROUTINES.morning.map((label, index) => ({
+          label,
+          done: Boolean(log?.routines?.morning[index]),
+        })),
+        evening: ROUTINES.evening.map((label, index) => ({
+          label,
+          done: Boolean(log?.routines?.evening[index]),
+        })),
       },
       nudges: dueRevisionNudges(chapters, ctx.today).map((chapter) => ({
         key: chapter.key,
@@ -151,7 +187,10 @@ export class DashboardService {
       this.examService.upcomingFrom(userId, ctx.today),
       this.suggestions.listByStates(userId, ['later']),
     ]);
-    const weekMins = [...eachDay(addDays(ctx.today, -6), ctx.today)].reduce((sum, date) => sum + activity.minutesOn(date), 0);
+    const weekMins = [...eachDay(addDays(ctx.today, -6), ctx.today)].reduce(
+      (sum, date) => sum + activity.minutesOn(date),
+      0,
+    );
     const nextExam = upcoming[0];
     return {
       name: user?.name ?? '',

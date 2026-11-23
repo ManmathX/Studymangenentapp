@@ -9,7 +9,10 @@ export interface MongoOptions {
   autoIndex: boolean;
 }
 
-export async function connectMongo(options: MongoOptions, logger: Logger): Promise<typeof mongoose> {
+export async function connectMongo(
+  options: MongoOptions,
+  logger: Logger,
+): Promise<typeof mongoose> {
   mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
   mongoose.connection.on('reconnected', () => logger.info('MongoDB reconnected'));
   mongoose.connection.on('error', (error: Error) => logger.error({ err: error }, 'MongoDB error'));

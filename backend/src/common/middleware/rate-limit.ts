@@ -33,7 +33,8 @@ function storeFor(redis: Redis | undefined, prefix: string): Partial<Options> {
   return {
     store: new RedisStore({
       prefix,
-      sendCommand: (command: string, ...args: string[]) => redis.call(command, ...args) as Promise<RedisReply>,
+      sendCommand: (command: string, ...args: string[]) =>
+        redis.call(command, ...args) as Promise<RedisReply>,
     }),
   };
 }
@@ -53,6 +54,8 @@ export function createRateLimiters(settings: RateLimitSettings, redis?: Redis): 
       ...storeFor(redis, 'rl:global:'),
       windowMs: 60_000,
       limit: settings.globalPerMinute,
+      // Load-balancer and orchestrator probes poll often from a few IPs; never throttle them.
+      skip: (req) => req.path === '/health' || req.path === '/health/ready',
     }),
     auth: rateLimit({
       ...common,

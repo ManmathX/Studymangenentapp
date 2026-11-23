@@ -1,4 +1,9 @@
-import { ConflictError, NotFoundError, UnauthorizedError } from '../../common/errors/app-error.js';
+import {
+  AppError,
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+} from '../../common/errors/app-error.js';
 import type { RequestMeta } from '../../common/http/types.js';
 import type { Clock } from '../../common/utils/clock.js';
 import type { AuditSink } from '../audit/audit.service.js';
@@ -30,6 +35,12 @@ export interface AuthSettings {
 
 const INVALID_CREDENTIALS = 'Email or password is incorrect';
 
+/** A re-entered password did not match. 400, not 401, so clients don't treat it as a lost session. */
+export function wrongPasswordError(field: string): AppError {
+  const message = 'That password is not right';
+  return new AppError(400, 'WRONG_PASSWORD', message, [{ path: `body.${field}`, message }]);
+}
+
 export class AuthService {
   constructor(
     private readonly users: UserRepository,
@@ -44,9 +55,15 @@ export class AuthService {
 
   async register(input: RegisterBody, meta: RequestMeta): Promise<Session> {
     const existing = await this.users.findCredentialsByEmail(input.email);
-    if (existing) throw new ConflictError('An account with this email already exists', 'EMAIL_TAKEN');
+    if (existing)
+      throw new ConflictError('An account with this email already exists', 'EMAIL_TAKEN');
     const passwordHash = await this.passwords.hash(input.password);
-    const user = await this.users.create({ email: input.email, name: input.name, passwordHash, role: 'student' });
+    const user = await this.users.create({
+      email: input.email,
+      name: input.name,
+      passwordHash,
+      role: 'student',
+    });
     await this.audit.record('auth.register', user.id, meta);
     const tokens = await this.issueTokens(user, this.tokens.newFamilyId(), meta);
     return { user, tokens, onboarded: false };
@@ -58,7 +75,9 @@ export class AuthService {
       ? await this.passwords.verify(credentials.passwordHash, input.password)
       : await this.passwords.verifyAgainstDummy(input.password);
     if (!credentials || !valid) {
-      await this.audit.record('auth.login_failed', credentials?.user.id ?? null, meta, { reason: credentials ? 'password' : 'unknown_email' });
+      await this.audit.record('auth.login_failed', credentials?.user.id ?? null, meta, {
+        reason: credentials ? 'password' : 'unknown_email',
+      });
       throw new UnauthorizedError(INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
     }
     const now = this.clock.now();
@@ -78,7 +97,8 @@ export class AuthService {
     const tokenHash = this.tokens.hashRefreshToken(refreshToken);
     const stored = await this.refreshTokens.findByHash(tokenHash);
     if (!stored) throw new UnauthorizedError('Your session is not valid', 'REFRESH_INVALID');
-    if (stored.expiresAt <= now) throw new UnauthorizedError('Your session has expired', 'REFRESH_EXPIRED');
+    if (stored.expiresAt <= now)
+      throw new UnauthorizedError('Your session has expired', 'REFRESH_EXPIRED');
     if (stored.revokedAt) {
       await this.handleReuse(stored.familyId, stored.userId, stored.revokedAt, now, meta);
       throw new UnauthorizedError('Your session is no longer valid', 'REFRESH_REUSED');
@@ -88,7 +108,11 @@ export class AuthService {
     if (!user) throw new UnauthorizedError('Your session is not valid', 'REFRESH_INVALID');
 
     const nextToken = this.tokens.generateRefreshToken();
-    const rotated = await this.refreshTokens.markRotated(tokenHash, this.tokens.hashRefreshToken(nextToken), now);
+    const rotated = await this.refreshTokens.markRotated(
+      tokenHash,
+      this.tokens.hashRefreshToken(nextToken),
+      now,
+    );
     if (!rotated) {
       // Another request rotated this token a moment ago (a benign race inside the grace window).
       throw new UnauthorizedError('Your session is no longer valid', 'REFRESH_REUSED');
@@ -110,7 +134,37 @@ export class AuthService {
     return { user, onboarded: Boolean(await this.profiles.findByUser(userId)) };
   }
 
-  private async handleReuse(familyId: string, userId: string, revokedAt: Date, now: Date, meta: RequestMeta): Promise<void> {
+  /**
+   * Changes the password after re-checking the current one. Every existing session,
+   * on every device, is signed out; the caller gets a fresh token pair to stay signed in.
+   */
+  async changePassword(
+    userId: string,
+    input: { currentPassword: string; newPassword: string },
+    meta: RequestMeta,
+  ): Promise<TokenPair> {
+    const [user, currentHash] = await Promise.all([
+      this.users.findById(userId),
+      this.users.findPasswordHash(userId),
+    ]);
+    if (!user || !currentHash) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
+    if (!(await this.passwords.verify(currentHash, input.currentPassword))) {
+      await this.audit.record('auth.password_change_failed', userId, meta);
+      throw wrongPasswordError('currentPassword');
+    }
+    await this.users.updatePasswordHash(userId, await this.passwords.hash(input.newPassword));
+    const revoked = await this.refreshTokens.revokeAllForUser(userId, this.clock.now());
+    await this.audit.record('auth.password_changed', userId, meta, { revokedSessions: revoked });
+    return this.issueTokens(user, this.tokens.newFamilyId(), meta);
+  }
+
+  private async handleReuse(
+    familyId: string,
+    userId: string,
+    revokedAt: Date,
+    now: Date,
+    meta: RequestMeta,
+  ): Promise<void> {
     const secondsSinceRotation = (now.getTime() - revokedAt.getTime()) / 1000;
     if (secondsSinceRotation <= this.settings.reuseGraceSeconds) return;
     const revoked = await this.refreshTokens.revokeFamily(familyId, now);
@@ -121,8 +175,15 @@ export class AuthService {
     return this.storeTokens(user, familyId, this.tokens.generateRefreshToken(), meta);
   }
 
-  private async storeTokens(user: UserRecord, familyId: string, refreshToken: string, meta: RequestMeta): Promise<TokenPair> {
-    const expiresAt = new Date(this.clock.now().getTime() + this.settings.refreshTtlDays * 86_400_000);
+  private async storeTokens(
+    user: UserRecord,
+    familyId: string,
+    refreshToken: string,
+    meta: RequestMeta,
+  ): Promise<TokenPair> {
+    const expiresAt = new Date(
+      this.clock.now().getTime() + this.settings.refreshTtlDays * 86_400_000,
+    );
     await this.refreshTokens.create({
       userId: user.id,
       tokenHash: this.tokens.hashRefreshToken(refreshToken),

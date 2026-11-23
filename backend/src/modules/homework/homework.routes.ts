@@ -1,7 +1,12 @@
 import { PageResult, paginationQuerySchema } from '../../common/http/page.js';
 import { defineRoute, type Route } from '../../common/http/route.js';
 import { z } from '../../common/zod.js';
-import { dateKeySchema, idParamsSchema, subjectSchema, trimmedText } from '../../common/utils/validators.js';
+import {
+  dateKeySchema,
+  idParamsSchema,
+  subjectSchema,
+  trimmedText,
+} from '../../common/utils/validators.js';
 import { taskSchema } from '../tasks/task.dto.js';
 import type { HomeworkService } from './homework.service.js';
 
@@ -44,7 +49,12 @@ export function homeworkRoutes(homework: HomeworkService): Route[] {
       access: 'user',
       summary: 'Counts for the homework header',
       tags,
-      response: z.object({ today: z.string(), dueThisWeek: z.number().int(), overdue: z.number().int(), doneThisWeek: z.number().int() }),
+      response: z.object({
+        today: z.string(),
+        dueThisWeek: z.number().int(),
+        overdue: z.number().int(),
+        doneThisWeek: z.number().int(),
+      }),
       handler: ({ auth }) => homework.summary(auth.userId),
     }),
     defineRoute({
@@ -77,6 +87,16 @@ export function homeworkRoutes(homework: HomeworkService): Route[] {
       body: z.strictObject({ done: z.boolean() }),
       response: homeworkSchema,
       handler: ({ auth, params, body }) => homework.setDone(auth.userId, params.id, body.done),
+    }),
+    defineRoute({
+      method: 'delete',
+      path: '/homework/:id',
+      access: 'user',
+      summary: 'Delete homework and its unfinished tasks',
+      tags,
+      status: 204,
+      params: idParamsSchema,
+      handler: ({ auth, params }) => homework.remove(auth.userId, params.id),
     }),
   ];
 }

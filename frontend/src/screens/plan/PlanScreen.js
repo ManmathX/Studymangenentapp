@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { ExamList } from '../../components/domain/ExamList';
@@ -7,7 +7,7 @@ import { Card, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary, Banner } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
-import { planActions, taskActions } from '../../services/actions';
+import { examActions, planActions, taskActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useTheme } from '../../theme/ThemeProvider';
 import { capitalize, dayName, duration, shortDate } from '../../utils/format';
@@ -17,11 +17,15 @@ export function PlanScreen({ navigation, route }) {
   const strip = useResource(resources.planStrip);
   const today = strip.data?.[0]?.date;
   const [selected, setSelected] = useState(null);
-  const requested = route.params?.date;
 
-  useEffect(() => {
-    if (requested) setSelected(requested);
-  }, [requested]);
+  // Other screens open a day with { date, at }. `at` makes every request distinct, so asking
+  // for the same day twice still jumps back to it after the student picked another day.
+  const request = route.params;
+  const [handledAt, setHandledAt] = useState(null);
+  if (request?.at && request.at !== handledAt) {
+    setHandledAt(request.at);
+    setSelected(request.date ?? null);
+  }
 
   const date = selected ?? today;
   return (
@@ -129,9 +133,10 @@ function PlanTools({ navigation }) {
 
 function UpcomingTests() {
   const exams = useResource(resources.exams);
+  const remove = useAsyncAction(examActions.remove);
   return (
     <Section title="Upcoming tests" flush>
-      <AsyncBoundary resource={exams}>{(list) => <ExamList exams={list} />}</AsyncBoundary>
+      <AsyncBoundary resource={exams}>{(list) => <ExamList exams={list} onRemove={remove.execute} busy={remove.pending} />}</AsyncBoundary>
     </Section>
   );
 }

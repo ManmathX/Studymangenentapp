@@ -1,4 +1,5 @@
 import { toObjectId } from '../../database/ids.js';
+import type { TxHandle } from '../../database/transaction.js';
 import { RefreshTokenModel, type RefreshTokenDocument } from './refresh-token.model.js';
 
 export interface RefreshTokenRecord {
@@ -24,6 +25,7 @@ export interface RefreshTokenRepository {
   markRotated(tokenHash: string, replacedByHash: string, at: Date): Promise<boolean>;
   revokeFamily(familyId: string, at: Date): Promise<number>;
   revokeAllForUser(userId: string, at: Date): Promise<number>;
+  deleteAllForUser(userId: string, tx: TxHandle): Promise<void>;
 }
 
 export class MongoRefreshTokenRepository implements RefreshTokenRepository {
@@ -39,10 +41,17 @@ export class MongoRefreshTokenRepository implements RefreshTokenRepository {
   }
 
   async findByHash(tokenHash: string): Promise<RefreshTokenRecord | null> {
-    const doc = await RefreshTokenModel.findOne({ tokenHash }, { userId: 1, familyId: 1, expiresAt: 1, revokedAt: 1 })
-      .lean<Pick<RefreshTokenDocument, 'userId' | 'familyId' | 'expiresAt' | 'revokedAt'>>();
+    const doc = await RefreshTokenModel.findOne(
+      { tokenHash },
+      { userId: 1, familyId: 1, expiresAt: 1, revokedAt: 1 },
+    ).lean<Pick<RefreshTokenDocument, 'userId' | 'familyId' | 'expiresAt' | 'revokedAt'>>();
     if (!doc) return null;
-    return { userId: doc.userId.toHexString(), familyId: doc.familyId, expiresAt: doc.expiresAt, revokedAt: doc.revokedAt };
+    return {
+      userId: doc.userId.toHexString(),
+      familyId: doc.familyId,
+      expiresAt: doc.expiresAt,
+      revokedAt: doc.revokedAt,
+    };
   }
 
   async markRotated(tokenHash: string, replacedByHash: string, at: Date): Promise<boolean> {
@@ -54,7 +63,10 @@ export class MongoRefreshTokenRepository implements RefreshTokenRepository {
   }
 
   async revokeFamily(familyId: string, at: Date): Promise<number> {
-    const result = await RefreshTokenModel.updateMany({ familyId, revokedAt: null }, { $set: { revokedAt: at } });
+    const result = await RefreshTokenModel.updateMany(
+      { familyId, revokedAt: null },
+      { $set: { revokedAt: at } },
+    );
     return result.modifiedCount;
   }
 
@@ -64,5 +76,9 @@ export class MongoRefreshTokenRepository implements RefreshTokenRepository {
       { $set: { revokedAt: at } },
     );
     return result.modifiedCount;
+  }
+
+  async deleteAllForUser(userId: string, tx: TxHandle): Promise<void> {
+    await RefreshTokenModel.deleteMany({ userId: toObjectId(userId) }, { session: tx });
   }
 }

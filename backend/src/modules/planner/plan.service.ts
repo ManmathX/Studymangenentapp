@@ -13,7 +13,13 @@ const LOAD_WINDOW_DAYS = 45;
 const VIEWABLE_PAST_DAYS = 60;
 
 type PlanRow =
-  | { type: 'fixed'; start: number; end: number; label: string; kind: 'school' | 'rest' | 'tuition' }
+  | {
+      type: 'fixed';
+      start: number;
+      end: number;
+      label: string;
+      kind: 'school' | 'rest' | 'tuition';
+    }
   | { type: 'task'; start: number; end: number; task: TaskDto };
 
 export class PlanService {
@@ -28,10 +34,15 @@ export class PlanService {
     const ctx = await this.context.load(userId);
     const first = from ?? ctx.today;
     const last = addDays(first, days - 1);
-    const [tasks, exams] = await Promise.all([this.tasks.findInRange(userId, first, last), this.exams.list(userId, first)]);
+    const [tasks, exams] = await Promise.all([
+      this.tasks.findInRange(userId, first, last),
+      this.exams.list(userId, first),
+    ]);
     const load = new DayLoad(tasks);
     const examDates = new Set(exams.map((exam) => exam.date));
-    const suggestedDates = new Set(tasks.filter((task) => task.status === 'suggested').map((task) => task.date));
+    const suggestedDates = new Set(
+      tasks.filter((task) => task.status === 'suggested').map((task) => task.date),
+    );
     return [...eachDay(first, last)].map((date) => ({
       date,
       plannedMins: load.planned(date),
@@ -44,11 +55,18 @@ export class PlanService {
 
   async day(userId: string, date: DateKey) {
     const ctx = await this.context.load(userId);
-    if (date < addDays(ctx.today, -VIEWABLE_PAST_DAYS) || date > addDays(ctx.today, LOAD_WINDOW_DAYS)) {
+    if (
+      date < addDays(ctx.today, -VIEWABLE_PAST_DAYS) ||
+      date > addDays(ctx.today, LOAD_WINDOW_DAYS)
+    ) {
       throw new BadRequestError('That day is outside the planner window', 'DATE_OUT_OF_RANGE');
     }
     const windowStart = date < ctx.today ? date : ctx.today;
-    const windowTasks = await this.tasks.findInRange(userId, windowStart, addDays(ctx.today, LOAD_WINDOW_DAYS));
+    const windowTasks = await this.tasks.findInRange(
+      userId,
+      windowStart,
+      addDays(ctx.today, LOAD_WINDOW_DAYS),
+    );
     const load = new DayLoad(windowTasks);
     const dayTasks = windowTasks.filter((task) => task.date === date);
     const layout = layoutDay(ctx.profile, date, dayTasks);
@@ -73,7 +91,9 @@ export class PlanService {
       rows,
       overflow: layout.overflow.map(toTaskDto),
       moveSuggestion: overloaded ? this.relief(load, ctx.profile, ctx.today, date, dayTasks) : null,
-      suggestedCount: windowTasks.filter((task) => task.status === 'suggested' && task.date >= ctx.today).length,
+      suggestedCount: windowTasks.filter(
+        (task) => task.status === 'suggested' && task.date >= ctx.today,
+      ).length,
       dayOptions: [...eachDay(ctx.start, addDays(ctx.today, PLANNING_HORIZON_DAYS))],
     };
   }
@@ -93,7 +113,15 @@ export class PlanService {
     profile: Parameters<typeof limitFor>[0],
     today: DateKey,
     date: DateKey,
-    dayTasks: { id: string; title: string; mins: number; score: number; done: boolean; status: string; deadline: string }[],
+    dayTasks: {
+      id: string;
+      title: string;
+      mins: number;
+      score: number;
+      done: boolean;
+      status: string;
+      deadline: string;
+    }[],
   ) {
     const candidate = dayTasks
       .filter((task) => task.status === 'accepted' && !task.done)

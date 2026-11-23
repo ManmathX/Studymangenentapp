@@ -1,5 +1,12 @@
 import { defineRoute, type Route } from '../../common/http/route.js';
-import { acceptAllResultSchema, dayParamsSchema, planDaySchema, scheduleResultSchema, stripDaySchema, stripQuerySchema } from './plan.schemas.js';
+import {
+  acceptAllResultSchema,
+  dayParamsSchema,
+  planDaySchema,
+  scheduleResultSchema,
+  stripDaySchema,
+  stripQuerySchema,
+} from './plan.schemas.js';
 import type { PlanService } from './plan.service.js';
 
 export function planRoutes(plan: PlanService): Route[] {

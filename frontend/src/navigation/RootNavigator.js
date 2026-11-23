@@ -15,6 +15,8 @@ const lazy = {
   ScheduleChapter: () => require('../screens/modals/ScheduleChapterScreen').ScheduleChapterScreen,
   NewHomework: () => require('../screens/modals/NewHomeworkScreen').NewHomeworkScreen,
   NewExam: () => require('../screens/modals/NewExamScreen').NewExamScreen,
+  ChangePassword: () => require('../screens/account/ChangePasswordScreen').ChangePasswordScreen,
+  DeleteAccount: () => require('../screens/account/DeleteAccountScreen').DeleteAccountScreen,
 };
 
 /** Signed out → sign-in screens; signed in but not set up → setup; otherwise the app. */
@@ -49,12 +51,14 @@ export function RootNavigator() {
   return (
     <Stack.Navigator>
       <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-      <Stack.Screen name="Privacy" getComponent={lazy.Privacy} options={{ title: 'Privacy', headerBackTitle: 'Back' }} />
+      <Stack.Screen name="Privacy" getComponent={lazy.Privacy} options={{ title: 'Settings', headerBackTitle: 'Back' }} />
       <Stack.Group screenOptions={{ presentation: 'modal' }}>
         <Stack.Screen name="Syllabus" getComponent={lazy.Syllabus} options={{ title: 'Syllabus' }} />
         <Stack.Screen name="ScheduleChapter" getComponent={lazy.ScheduleChapter} options={{ title: 'Schedule' }} />
         <Stack.Screen name="NewHomework" getComponent={lazy.NewHomework} options={{ title: 'New Homework' }} />
         <Stack.Screen name="NewExam" getComponent={lazy.NewExam} options={{ title: 'New Test' }} />
+        <Stack.Screen name="ChangePassword" getComponent={lazy.ChangePassword} options={{ title: 'Change Password' }} />
+        <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete Account' }} />
       </Stack.Group>
     </Stack.Navigator>
   );

@@ -6,7 +6,11 @@ import { TASK_STATUSES } from '../planner/planner.types.js';
 import { taskSchema } from './task.dto.js';
 import type { TaskService } from './task.service.js';
 
-const actionRoute = (path: string, summary: string, run: (userId: string, id: string) => Promise<unknown>) =>
+const actionRoute = (
+  path: string,
+  summary: string,
+  run: (userId: string, id: string) => Promise<unknown>,
+) =>
   defineRoute({
     method: 'post',
     path,
@@ -51,12 +55,28 @@ export function taskRoutes(tasks: TaskService): Route[] {
       body: z
         .strictObject({ done: z.boolean().optional(), date: dateKeySchema.optional() })
         .refine((body) => body.done !== undefined || body.date !== undefined, 'Send done or date'),
-      response: z.object({ task: taskSchema, homework: z.unknown().nullable(), chapter: z.unknown().nullable() }),
+      response: z.object({
+        task: taskSchema,
+        homework: z.unknown().nullable(),
+        chapter: z.unknown().nullable(),
+      }),
       handler: ({ auth, params, body }) => tasks.update(auth.userId, params.id, body),
     }),
-    actionRoute('/tasks/:id/accept', 'Accept a suggested block into the plan', (userId, id) => tasks.accept(userId, id)),
-    actionRoute('/tasks/:id/skip', 'Skip a block; it stops counting toward the day', (userId, id) => tasks.skip(userId, id)),
-    actionRoute('/tasks/:id/swap', 'Move a suggested block to the best other day and accept it', (userId, id) => tasks.swap(userId, id)),
-    actionRoute('/tasks/:id/move', 'Move a block to the nearby day with the most room', (userId, id) => tasks.moveToBestDay(userId, id)),
+    actionRoute('/tasks/:id/accept', 'Accept a suggested block into the plan', (userId, id) =>
+      tasks.accept(userId, id),
+    ),
+    actionRoute('/tasks/:id/skip', 'Skip a block; it stops counting toward the day', (userId, id) =>
+      tasks.skip(userId, id),
+    ),
+    actionRoute(
+      '/tasks/:id/swap',
+      'Move a suggested block to the best other day and accept it',
+      (userId, id) => tasks.swap(userId, id),
+    ),
+    actionRoute(
+      '/tasks/:id/move',
+      'Move a block to the nearby day with the most room',
+      (userId, id) => tasks.moveToBestDay(userId, id),
+    ),
   ];
 }

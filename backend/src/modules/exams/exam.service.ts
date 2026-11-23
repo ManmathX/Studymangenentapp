@@ -46,17 +46,23 @@ export class ExamService {
 
   async create(userId: string, input: NewExamInput): Promise<ExamRecord> {
     const ctx = await this.context.load(userId);
-    if (!ctx.profile.subjects.includes(input.subject)) throw new BadRequestError('That subject is turned off', 'SUBJECT_NOT_SELECTED');
-    if (input.date <= ctx.today) throw new BadRequestError('Pick a date after today', 'EXAM_IN_PAST');
+    if (!ctx.profile.subjects.includes(input.subject))
+      throw new BadRequestError('That subject is turned off', 'SUBJECT_NOT_SELECTED');
+    if (input.date <= ctx.today)
+      throw new BadRequestError('Pick a date after today', 'EXAM_IN_PAST');
     const keys = [...new Set(input.chapterKeys)];
     const chapters = await this.chapters.findByKeys(userId, keys);
-    if (chapters.length !== keys.length || chapters.some((chapter) => chapter.subject !== input.subject)) {
+    if (
+      chapters.length !== keys.length ||
+      chapters.some((chapter) => chapter.subject !== input.subject)
+    ) {
       throw new BadRequestError('Pick chapters from this subject', 'UNKNOWN_CHAPTER');
     }
     return this.exams.create(userId, { ...input, chapterKeys: keys });
   }
 
   async remove(userId: string, id: string): Promise<void> {
-    if (!(await this.exams.delete(userId, id))) throw new NotFoundError('Test not found', 'EXAM_NOT_FOUND');
+    if (!(await this.exams.delete(userId, id)))
+      throw new NotFoundError('Test not found', 'EXAM_NOT_FOUND');
   }
 }

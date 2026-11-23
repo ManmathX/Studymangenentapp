@@ -41,19 +41,30 @@ export class OnboardingService {
 
   /** Creates the profile, chapters, tests and first suggested study blocks in one transaction. */
   async onboard(userId: string, body: OnboardingBody) {
-    if (await this.profiles.findByUser(userId)) throw new ConflictError('Your planner is already set up', 'ALREADY_ONBOARDED');
-    if (!isSupportedClass(body.cls)) throw new BadRequestError('That class is not available yet', 'CLASS_NOT_AVAILABLE');
+    if (await this.profiles.findByUser(userId))
+      throw new ConflictError('Your planner is already set up', 'ALREADY_ONBOARDED');
+    if (!isSupportedClass(body.cls))
+      throw new BadRequestError('That class is not available yet', 'CLASS_NOT_AVAILABLE');
     const { today, start } = this.context.today(body.timezone);
 
     const catalog = catalogChapters(body.cls, body.subjects);
     const known = new Set(catalog.map((chapter) => chapter.key));
     const taught = new Set(body.taughtChapterKeys);
-    for (const key of taught) if (!known.has(key)) throw new BadRequestError(`Unknown chapter ${key}`, 'UNKNOWN_CHAPTER');
+    for (const key of taught)
+      if (!known.has(key)) throw new BadRequestError(`Unknown chapter ${key}`, 'UNKNOWN_CHAPTER');
     for (const exam of body.exams) {
-      if (!body.subjects.includes(exam.subject)) throw new BadRequestError(`${exam.name} is for a subject you turned off`, 'SUBJECT_NOT_SELECTED');
-      if (exam.date <= today) throw new BadRequestError(`${exam.name} must be after today`, 'EXAM_IN_PAST');
+      if (!body.subjects.includes(exam.subject))
+        throw new BadRequestError(
+          `${exam.name} is for a subject you turned off`,
+          'SUBJECT_NOT_SELECTED',
+        );
+      if (exam.date <= today)
+        throw new BadRequestError(`${exam.name} must be after today`, 'EXAM_IN_PAST');
       if (exam.chapterKeys.some((key) => !key.startsWith(`${exam.subject}-`) || !known.has(key))) {
-        throw new BadRequestError(`${exam.name} lists a chapter outside its subject`, 'UNKNOWN_CHAPTER');
+        throw new BadRequestError(
+          `${exam.name} lists a chapter outside its subject`,
+          'UNKNOWN_CHAPTER',
+        );
       }
     }
 
@@ -77,7 +88,11 @@ export class OnboardingService {
       weeklyGoalMins: body.dailyLimitMins * 5,
       ageMode: body.cls <= 8 ? 'simple' : 'deeper',
       examSeason: false,
-      sharing: { parent: false, items: { hours: true, streak: true, coverage: true, tests: true, marks: false }, groups: false },
+      sharing: {
+        parent: false,
+        items: { hours: true, streak: true, coverage: true, tests: true, marks: false },
+        groups: false,
+      },
       trackingStart: today,
       isDemo: false,
     };
@@ -100,7 +115,11 @@ export class OnboardingService {
       await this.tasks.insertMany(userId, blocks.map(blockToTask), tx);
       return summarize(blocks);
     });
-    return { profile: await this.profileService.get(userId), suggested: result.added, firstDate: result.firstDate };
+    return {
+      profile: await this.profileService.get(userId),
+      suggested: result.added,
+      firstDate: result.firstDate,
+    };
   }
 
   /** Replaces the account's planner data with the demo student's week. */
@@ -108,19 +127,29 @@ export class OnboardingService {
     const { today } = this.context.today(timezone);
     const demo = buildDemoData(today, timezone);
     await this.transactions.run(async (tx) => {
-      await this.deleteAll(userId, tx);
+      await this.deleteAllData(userId, tx);
       await this.profiles.create(userId, demo.profile, tx);
       await this.chapters.insertMany(userId, demo.chapters, tx);
       await this.exams.insertMany(userId, demo.exams, tx);
-      const homework = await this.homework.insertMany(userId, demo.homework.map(({ ref: _ref, ...item }) => item), tx);
-      const idByRef = new Map(demo.homework.map((item, index) => [item.ref, homework[index]?.id ?? null]));
+      const homework = await this.homework.insertMany(
+        userId,
+        demo.homework.map(({ ref: _ref, ...item }) => item),
+        tx,
+      );
+      const idByRef = new Map(
+        demo.homework.map((item, index) => [item.ref, homework[index]?.id ?? null]),
+      );
       await this.tasks.insertMany(
         userId,
-        demo.tasks.map(({ homeworkRef, ...task }) => ({ ...task, homeworkId: homeworkRef ? (idByRef.get(homeworkRef) ?? null) : null })),
+        demo.tasks.map(({ homeworkRef, ...task }) => ({
+          ...task,
+          homeworkId: homeworkRef ? (idByRef.get(homeworkRef) ?? null) : null,
+        })),
         tx,
       );
       await this.habits.insertFocusSessions(userId, demo.focus, tx);
-      for (const date of demo.restDays) await this.habits.upsertLog(userId, date, { rest: true }, tx);
+      for (const date of demo.restDays)
+        await this.habits.upsertLog(userId, date, { rest: true }, tx);
     });
     await this.audit.record('data.demo_seeded', userId, meta);
     return { profile: await this.profileService.get(userId), suggested: 0, firstDate: null };
@@ -128,11 +157,12 @@ export class OnboardingService {
 
   /** "Start over": removes every planner record for the account, keeping the login. */
   async wipe(userId: string, meta: RequestMeta): Promise<void> {
-    await this.transactions.run((tx) => this.deleteAll(userId, tx));
+    await this.transactions.run((tx) => this.deleteAllData(userId, tx));
     await this.audit.record('data.wipe', userId, meta);
   }
 
-  private async deleteAll(userId: string, tx: TxHandle): Promise<void> {
+  /** Deletes every planner record for the account. Also used when the account itself is deleted. */
+  async deleteAllData(userId: string, tx: TxHandle): Promise<void> {
     await this.tasks.deleteByUser(userId, tx);
     await this.suggestions.deleteByUser(userId, tx);
     await this.homework.deleteByUser(userId, tx);

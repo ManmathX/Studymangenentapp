@@ -24,7 +24,8 @@ export function dashboardRoutes(dashboard: DashboardService): Route[] {
       method: 'get',
       path: '/dashboard/habits',
       access: 'user',
-      summary: 'Habits screen: streak calendar, focus sessions, check-in, routines, revision nudges',
+      summary:
+        'Habits screen: streak calendar, focus sessions, check-in, routines, revision nudges',
       tags,
       handler: ({ auth }) => dashboard.habitsOverview(auth.userId),
     }),

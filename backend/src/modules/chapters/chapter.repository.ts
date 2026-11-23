@@ -19,14 +19,31 @@ export interface ChapterPatch {
 
 export interface ChapterRepository {
   insertMany(userId: string, chapters: NewChapter[], tx: TxHandle): Promise<void>;
-  list(userId: string, filter?: { subject?: SubjectId; status?: ChapterStatus }): Promise<ChapterRecord[]>;
+  list(
+    userId: string,
+    filter?: { subject?: SubjectId; status?: ChapterStatus },
+  ): Promise<ChapterRecord[]>;
   findByKey(userId: string, key: string): Promise<ChapterRecord | null>;
   findByKeys(userId: string, keys: string[]): Promise<ChapterRecord[]>;
-  update(userId: string, key: string, patch: ChapterPatch, tx?: TxHandle): Promise<ChapterRecord | null>;
+  update(
+    userId: string,
+    key: string,
+    patch: ChapterPatch,
+    tx?: TxHandle,
+  ): Promise<ChapterRecord | null>;
   deleteByUser(userId: string, tx: TxHandle): Promise<void>;
 }
 
-const FIELDS = { key: 1, subject: 1, name: 1, difficulty: 1, status: 1, learnedOn: 1, revisions: 1, snoozedUntil: 1 } as const;
+const FIELDS = {
+  key: 1,
+  subject: 1,
+  name: 1,
+  difficulty: 1,
+  status: 1,
+  learnedOn: 1,
+  revisions: 1,
+  snoozedUntil: 1,
+} as const;
 
 function toRecord(doc: Pick<ChapterDocument, keyof typeof FIELDS>): ChapterRecord {
   return {
@@ -50,26 +67,42 @@ export class MongoChapterRepository implements ChapterRepository {
     );
   }
 
-  async list(userId: string, filter: { subject?: SubjectId; status?: ChapterStatus } = {}): Promise<ChapterRecord[]> {
+  async list(
+    userId: string,
+    filter: { subject?: SubjectId; status?: ChapterStatus } = {},
+  ): Promise<ChapterRecord[]> {
     const query: Record<string, unknown> = { userId: toObjectId(userId) };
     if (filter.subject) query.subject = filter.subject;
     if (filter.status) query.status = filter.status;
-    const docs = await ChapterModel.find(query, FIELDS).sort({ subject: 1, position: 1 }).lean<ChapterDocument[]>();
+    const docs = await ChapterModel.find(query, FIELDS)
+      .sort({ subject: 1, position: 1 })
+      .lean<ChapterDocument[]>();
     return docs.map(toRecord);
   }
 
   async findByKey(userId: string, key: string): Promise<ChapterRecord | null> {
-    const doc = await ChapterModel.findOne({ userId: toObjectId(userId), key }, FIELDS).lean<ChapterDocument>();
+    const doc = await ChapterModel.findOne(
+      { userId: toObjectId(userId), key },
+      FIELDS,
+    ).lean<ChapterDocument>();
     return doc ? toRecord(doc) : null;
   }
 
   async findByKeys(userId: string, keys: string[]): Promise<ChapterRecord[]> {
     if (!keys.length) return [];
-    const docs = await ChapterModel.find({ userId: toObjectId(userId), key: { $in: keys } }, FIELDS).lean<ChapterDocument[]>();
+    const docs = await ChapterModel.find(
+      { userId: toObjectId(userId), key: { $in: keys } },
+      FIELDS,
+    ).lean<ChapterDocument[]>();
     return docs.map(toRecord);
   }
 
-  async update(userId: string, key: string, patch: ChapterPatch, tx?: TxHandle): Promise<ChapterRecord | null> {
+  async update(
+    userId: string,
+    key: string,
+    patch: ChapterPatch,
+    tx?: TxHandle,
+  ): Promise<ChapterRecord | null> {
     const doc = await ChapterModel.findOneAndUpdate(
       { userId: toObjectId(userId), key },
       { $set: patch },

@@ -1,0 +1,76 @@
+# Production-like stack: MongoDB (single-node replica set), Redis and the API.
+#   JWT_ACCESS_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))") docker compose up -d --build
+# Create the first admin:
+#   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-strong-pass-1' docker compose run --rm admin
+# For a real deployment, use a managed MongoDB replica set and put the API behind HTTPS.
+
+services:
+  mongo:
+    image: mongo:7.0
+    command: ['--replSet', 'rs0', '--bind_ip_all', '--port', '27017']
+    volumes:
+      - mongo-data:/data/db
+    # Initiates the replica set on first start; healthy once it answers as a member.
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/study_planner?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (at least 32 random characters)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  admin:
+    profiles: ['tools']
+    build:
+      context: ./backend
+      target: tools
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/study_planner?replicaSet=rs0
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (at least 32 random characters)}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrator}
+      ADMIN_RESET_PASSWORD: ${ADMIN_RESET_PASSWORD:-false}
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:

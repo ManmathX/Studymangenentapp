@@ -23,10 +23,15 @@ export function createApp(config: AppConfig, logger: Logger, container: Containe
   app.use(
     pinoHttp({
       logger,
-      genReqId: (_req, res) => res.locals.requestId as string,
-      customLogLevel: (_req, res, error) => (error || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+      genReqId: (_req, res) => res.locals.requestId,
+      customLogLevel: (_req, res, error) =>
+        error || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
       serializers: {
-        req: (req: { id: string; method: string; url: string }) => ({ id: req.id, method: req.method, url: req.url }),
+        req: (req: { id: string; method: string; url: string }) => ({
+          id: req.id,
+          method: req.method,
+          url: req.url,
+        }),
         res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
       },
     }),
@@ -44,12 +49,19 @@ export function createApp(config: AppConfig, logger: Logger, container: Containe
   app.use(compression());
   app.use(express.json({ limit: '100kb', strict: true }));
 
-  const openApi = buildOpenApiDocument(container.routes, API_PREFIX);
-  app.get('/docs/openapi.json', (_req, res) => {
-    res.json(openApi);
-  });
-  // Swagger UI needs inline scripts; relax CSP for the docs page only.
-  app.use('/docs', helmet({ contentSecurityPolicy: false }), swaggerUi.serve, swaggerUi.setup(openApi, { customSiteTitle: 'Study Planner API' }));
+  if (config.API_DOCS_ENABLED) {
+    const openApi = buildOpenApiDocument(container.routes, API_PREFIX);
+    app.get('/docs/openapi.json', (_req, res) => {
+      res.json(openApi);
+    });
+    // Swagger UI needs inline scripts; relax CSP for the docs page only.
+    app.use(
+      '/docs',
+      helmet({ contentSecurityPolicy: false }),
+      swaggerUi.serve,
+      swaggerUi.setup(openApi, { customSiteTitle: 'Study Planner API' }),
+    );
+  }
 
   const api = express.Router();
   api.use(container.rateLimiters.global);

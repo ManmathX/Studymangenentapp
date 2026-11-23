@@ -12,7 +12,7 @@ export function HeaderAvatar() {
     <Pressable
       onPress={() => navigation.navigate('Privacy')}
       accessibilityRole="button"
-      accessibilityLabel="Profile, sharing and privacy"
+      accessibilityLabel="Settings: profile, appearance, privacy and account"
       hitSlop={8}
       style={[styles.avatar, { backgroundColor: colors.tint }]}
     >

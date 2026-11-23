@@ -1,5 +1,11 @@
 import { defineRoute, type Route } from '../../common/http/route.js';
-import { demoBodySchema, onboardingBodySchema, onboardingResultSchema, profilePatchSchema, profileSchema } from './profile.schemas.js';
+import {
+  demoBodySchema,
+  onboardingBodySchema,
+  onboardingResultSchema,
+  profilePatchSchema,
+  profileSchema,
+} from './profile.schemas.js';
 import type { OnboardingService } from './onboarding.service.js';
 import type { ProfileService } from './profile.service.js';
 

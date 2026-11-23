@@ -3,12 +3,16 @@
     "name": "Study Planner",
     "slug": "study-planner",
     "version": "1.0.0",
+    "scheme": "studyplanner",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.studyplanner.app"
+      "bundleIdentifier": "com.studyplanner.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {

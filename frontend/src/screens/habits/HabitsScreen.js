@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SubjectDot } from '../../components/domain/Badges';
 import { StreakCalendar } from '../../components/domain/Charts';
@@ -33,7 +33,7 @@ export function HabitsScreen() {
             <FocusTimer subjects={data.subjects} />
             {data.focusSessions.length ? <FocusSessions sessions={data.focusSessions} /> : null}
             <CheckIn checkin={data.checkin} key={`${data.today}-${data.checkin.saved}`} />
-            <Routines routines={data.routines} />
+            <Routines routines={data.routines} key={routinesKey(data)} />
             <Nudges nudges={data.nudges} today={data.today} />
           </>
         )}
@@ -122,12 +122,15 @@ function CheckIn({ checkin }) {
   );
 }
 
+/** Remounts the routines card when the saved ticks (or the day) change on the server. */
+function routinesKey(data) {
+  const ticks = (list) => list.map((item) => (item.done ? 1 : 0)).join('');
+  return `${data.today}-${ticks(data.routines.morning)}-${ticks(data.routines.evening)}`;
+}
+
 function Routines({ routines }) {
   const { colors } = useTheme();
   const [ticks, setTicks] = useState({ morning: routines.morning.map((item) => item.done), evening: routines.evening.map((item) => item.done) });
-  useEffect(() => {
-    setTicks({ morning: routines.morning.map((item) => item.done), evening: routines.evening.map((item) => item.done) });
-  }, [routines]);
 
   const toggle = (part, index) => {
     const next = { ...ticks, [part]: ticks[part].map((value, i) => (i === index ? !value : value)) };

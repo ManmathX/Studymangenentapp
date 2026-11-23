@@ -72,7 +72,8 @@ function toDetails(error: z.ZodError, location: string) {
 function parsePart<T>(schema: z.ZodType<T> | undefined, value: unknown, location: string): T {
   if (!schema) return undefined as T;
   const result = schema.safeParse(value ?? {});
-  if (!result.success) throw new ValidationError('The request is not valid', toDetails(result.error, location));
+  if (!result.success)
+    throw new ValidationError('The request is not valid', toDetails(result.error, location));
   return result.data;
 }
 
@@ -133,12 +134,15 @@ function documentRoute<B, Q, P>(
   };
   if (definition.access !== 'public') {
     responses[401] = { description: 'Missing or invalid access token', content: errorContent };
-    if (definition.access !== 'user') responses[403] = { description: 'Role not allowed', content: errorContent };
+    if (definition.access !== 'user')
+      responses[403] = { description: 'Role not allowed', content: errorContent };
   }
-  if (definition.path.includes(':')) responses[404] = { description: 'Not found', content: errorContent };
+  if (definition.path.includes(':'))
+    responses[404] = { description: 'Not found', content: errorContent };
 
   const request: RouteConfig['request'] = {};
-  if (definition.body) request.body = { content: { 'application/json': { schema: definition.body } }, required: true };
+  if (definition.body)
+    request.body = { content: { 'application/json': { schema: definition.body } }, required: true };
   if (definition.query instanceof z.ZodObject) request.query = definition.query;
   if (definition.params instanceof z.ZodObject) request.params = definition.params;
 

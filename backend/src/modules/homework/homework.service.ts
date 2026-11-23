@@ -47,8 +47,10 @@ export class HomeworkService {
   /** Saves homework and plans a task for the day before it is due. */
   async create(userId: string, input: NewHomeworkInput) {
     const ctx = await this.context.load(userId);
-    if (!ctx.profile.subjects.includes(input.subject)) throw new BadRequestError('That subject is turned off', 'SUBJECT_NOT_SELECTED');
-    if (input.due < ctx.today) throw new BadRequestError('Pick a due date from today onwards', 'DUE_IN_PAST');
+    if (!ctx.profile.subjects.includes(input.subject))
+      throw new BadRequestError('That subject is turned off', 'SUBJECT_NOT_SELECTED');
+    if (input.due < ctx.today)
+      throw new BadRequestError('Pick a due date from today onwards', 'DUE_IN_PAST');
     const day = input.due > ctx.today ? addDays(input.due, -1) : ctx.today;
     return this.transactions.run(async (tx) => {
       const homework = await this.homework.create(
@@ -69,7 +71,11 @@ export class HomeworkService {
             deadline: day,
             source: 'me',
             status: 'accepted',
-            score: priority(Math.max(1, diffDays(ctx.today, input.due)), DEFAULT_WEIGHT, input.difficulty),
+            score: priority(
+              Math.max(1, diffDays(ctx.today, input.due)),
+              DEFAULT_WEIGHT,
+              input.difficulty,
+            ),
           },
         ],
         tx,
@@ -85,5 +91,15 @@ export class HomeworkService {
     if (!updated) throw new NotFoundError('Homework not found', 'HOMEWORK_NOT_FOUND');
     if (done) await this.tasks.skipSuggestedForHomework(userId, id, ctx.today);
     return updated;
+  }
+
+  /** Deletes homework and its unfinished tasks; minutes already studied stay in the history. */
+  async remove(userId: string, id: string): Promise<void> {
+    await this.transactions.run(async (tx) => {
+      if (!(await this.homework.delete(userId, id, tx))) {
+        throw new NotFoundError('Homework not found', 'HOMEWORK_NOT_FOUND');
+      }
+      await this.tasks.releaseHomework(userId, id, tx);
+    });
   }
 }

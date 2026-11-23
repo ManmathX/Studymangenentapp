@@ -119,7 +119,10 @@ export function priority(daysLeft: number, weight: number, difficulty: number): 
 
 /* ---------- Day timeline ---------- */
 
-export function fixedBlocks(profile: PlannerProfile, date: DateKey): { start: number; end: number; blocks: FixedBlock[] } {
+export function fixedBlocks(
+  profile: PlannerProfile,
+  date: DateKey,
+): { start: number; end: number; blocks: FixedBlock[] } {
   const day = weekday(date);
   if (day === 0) {
     return {
@@ -134,10 +137,16 @@ export function fixedBlocks(profile: PlannerProfile, date: DateKey): { start: nu
   const schoolStart = profile.schoolStart;
   const schoolOut = day === 6 ? Math.min(profile.schoolEnd, schoolStart + 285) : profile.schoolEnd;
   const blocks: FixedBlock[] = [
-    { start: schoolStart, end: schoolOut, label: day === 6 ? 'School (half day)' : 'School', kind: 'school' },
+    {
+      start: schoolStart,
+      end: schoolOut,
+      label: day === 6 ? 'School (half day)' : 'School',
+      kind: 'school',
+    },
     { start: schoolOut, end: schoolOut + 75, label: 'Lunch and rest', kind: 'rest' },
   ];
-  if (profile.tuitionDays.includes(day)) blocks.push({ start: 16 * 60, end: 17 * 60 + 30, label: 'Tuition', kind: 'tuition' });
+  if (profile.tuitionDays.includes(day))
+    blocks.push({ start: 16 * 60, end: 17 * 60 + 30, label: 'Tuition', kind: 'tuition' });
   blocks.push({ start: 20 * 60, end: 20 * 60 + 45, label: 'Dinner with family', kind: 'rest' });
   return { start: schoolOut + 75, end: DAY_END, blocks };
 }
@@ -153,8 +162,7 @@ export function sortDayTasks<T extends DayTask>(tasks: T[]): T[] {
 }
 
 export type TimelineRow<T> =
-  | ({ type: 'fixed' } & FixedBlock)
-  | { type: 'task'; start: number; end: number; task: T };
+  ({ type: 'fixed' } & FixedBlock) | { type: 'task'; start: number; end: number; task: T };
 
 /** Places tasks in the free time around school, tuition and meals, with short breaks between. */
 export function layoutDay<T extends DayTask>(
@@ -170,7 +178,9 @@ export function layoutDay<T extends DayTask>(
     let slotStart = cursor;
     let fits = false;
     for (let guard = 0; guard < 10; guard += 1) {
-      const clash = blocks.find((block) => block.start < slotStart + task.mins && block.end > slotStart);
+      const clash = blocks.find(
+        (block) => block.start < slotStart + task.mins && block.end > slotStart,
+      );
       if (clash) {
         slotStart = clash.end;
         continue;
@@ -192,7 +202,10 @@ export function layoutDay<T extends DayTask>(
 /* ---------- Chapters ---------- */
 
 export function stepsFor(chapter: Pick<PlannerChapter, 'subject' | 'status'>): StudyStep[] {
-  const exercises = chapter.subject === 'maths' || chapter.subject === 'science' ? 'NCERT exercises' : 'Textbook questions';
+  const exercises =
+    chapter.subject === 'maths' || chapter.subject === 'science'
+      ? 'NCERT exercises'
+      : 'Textbook questions';
   const steps: Record<ChapterStatus, StudyStep[]> = {
     not: [
       { title: 'Learn: read and make notes', mins: 45, kind: 'revision' },
@@ -223,7 +236,9 @@ export function chapterDeadline<E extends PlannerExam>(
   const exam = exams
     .filter((candidate) => candidate.date > today && candidate.chapterKeys.includes(chapterKey))
     .sort((a, b) => (a.date < b.date ? -1 : 1))[0];
-  return exam ? { exam, deadline: addDays(exam.date, -1) } : { exam: null, deadline: addDays(today, PLANNING_HORIZON_DAYS) };
+  return exam
+    ? { exam, deadline: addDays(exam.date, -1) }
+    : { exam: null, deadline: addDays(today, PLANNING_HORIZON_DAYS) };
 }
 
 /** Proposes one day per step, in order, using days with free time before the deadline. */
@@ -243,8 +258,17 @@ export function proposeDays(
   let from = start;
   for (const mins of stepMinutes) {
     let day: DateKey | null = null;
-    for (const date of eachDay(from, cap)) if (room(date) >= mins) { day = date; break; }
-    if (!day) for (const date of eachDay(start, cap)) if (room(date) >= mins) { day = date; break; }
+    for (const date of eachDay(from, cap))
+      if (room(date) >= mins) {
+        day = date;
+        break;
+      }
+    if (!day)
+      for (const date of eachDay(start, cap))
+        if (room(date) >= mins) {
+          day = date;
+          break;
+        }
     if (!day) day = from <= cap ? from : cap >= start ? cap : start;
     reserved.set(day, (reserved.get(day) ?? 0) + mins);
     days.push(day);

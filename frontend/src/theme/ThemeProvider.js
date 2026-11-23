@@ -1,12 +1,41 @@
-import { createContext, useContext, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
+import { createContext, useContext, useEffect, useMemo } from 'react';
+import { Appearance, Platform, useColorScheme } from 'react-native';
+import { usePreferencesStore } from '../store/preferencesStore';
 import { layout, palette, radius, spacing, type } from './tokens';
 
 const ThemeContext = createContext(null);
 
+/**
+ * Tells native UI (switches, alerts, keyboards, pickers) which scheme to draw.
+ * react-native-web has no override, and there the palette alone is enough.
+ */
+function applyNativeOverride(appearance) {
+  if (Platform.OS === 'web' || typeof Appearance.setColorScheme !== 'function') return;
+  try {
+    Appearance.setColorScheme(appearance === 'system' ? 'unspecified' : appearance);
+  } catch {
+    // Older runtimes without the override keep following the system setting.
+  }
+}
+
 export function ThemeProvider({ children }) {
-  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
-  const value = useMemo(() => ({ scheme, colors: palette[scheme], spacing, radius, type, layout }), [scheme]);
+  const appearance = usePreferencesStore((state) => state.appearance);
+  const hydrate = usePreferencesStore((state) => state.hydrate);
+  const system = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const scheme = appearance === 'system' ? system : appearance;
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    applyNativeOverride(appearance);
+  }, [appearance]);
+
+  const value = useMemo(
+    () => ({ scheme, appearance, colors: palette[scheme], spacing, radius, type, layout }),
+    [scheme, appearance],
+  );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

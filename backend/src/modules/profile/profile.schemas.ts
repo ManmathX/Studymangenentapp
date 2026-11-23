@@ -8,7 +8,11 @@ const timeOfDay = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM')
   .openapi({ example: '07:45' });
-const timezone = z.string().max(64).refine(isValidTimeZone, 'Unknown time zone').openapi({ example: 'Asia/Kolkata' });
+const timezone = z
+  .string()
+  .max(64)
+  .refine(isValidTimeZone, 'Unknown time zone')
+  .openapi({ example: 'Asia/Kolkata' });
 const chapterKey = z.string().regex(/^[a-z]+-\d{1,2}$/, 'Invalid chapter key');
 
 export const onboardingExamSchema = z.strictObject({
@@ -31,7 +35,10 @@ export const onboardingBodySchema = z
     dailyLimitMins: z.union([z.literal(120), z.literal(180), z.literal(240)]),
     timezone,
   })
-  .refine((body) => body.schoolEnd > body.schoolStart, { message: 'School has to end after it starts', path: ['schoolEnd'] })
+  .refine((body) => body.schoolEnd > body.schoolStart, {
+    message: 'School has to end after it starts',
+    path: ['schoolEnd'],
+  })
   .openapi('OnboardingRequest');
 
 export const demoBodySchema = z.strictObject({ timezone }).openapi('DemoRequest');
@@ -50,7 +57,11 @@ export const profilePatchSchema = z
     examSeason: z.boolean().optional(),
     timezone: timezone.optional(),
     sharing: z
-      .strictObject({ parent: z.boolean().optional(), groups: z.boolean().optional(), items: sharingItemsSchema.partial().optional() })
+      .strictObject({
+        parent: z.boolean().optional(),
+        groups: z.boolean().optional(),
+        items: sharingItemsSchema.partial().optional(),
+      })
       .optional(),
   })
   .refine((body) => Object.keys(body).length > 0, 'Send at least one field to change')

@@ -9,7 +9,12 @@ export interface PasswordHasher {
 
 /** Argon2id with the OWASP-recommended minimum (19 MiB memory, 2 iterations, 1 lane). */
 export class Argon2PasswordHasher implements PasswordHasher {
-  private readonly options = { type: argon2.argon2id, memoryCost: 19_456, timeCost: 2, parallelism: 1 } as const;
+  private readonly options = {
+    type: argon2.argon2id,
+    memoryCost: 19_456,
+    timeCost: 2,
+    parallelism: 1,
+  } as const;
   private dummyHash: Promise<string> | undefined;
 
   hash(password: string): Promise<string> {

@@ -61,7 +61,9 @@ export class MongoProfileRepository implements ProfileRepository {
   }
 
   async create(userId: string, profile: NewProfile, tx: TxHandle): Promise<ProfileRecord> {
-    const [doc] = await ProfileModel.create([{ ...profile, userId: toObjectId(userId) }], { session: tx });
+    const [doc] = await ProfileModel.create([{ ...profile, userId: toObjectId(userId) }], {
+      session: tx,
+    });
     if (!doc) throw new Error('Profile insert returned no document');
     return toRecord(doc.toObject());
   }

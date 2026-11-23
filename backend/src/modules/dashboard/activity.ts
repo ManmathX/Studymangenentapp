@@ -42,6 +42,8 @@ export async function loadActivity(
     if (date < ctx.today && date >= ctx.profile.trackingStart) return 'missed';
     return null;
   };
-  const restDaysThisWeek = [...eachDay(addDays(ctx.today, -6), ctx.today)].filter((date) => stateOf(date) === 'rest').length;
+  const restDaysThisWeek = [...eachDay(addDays(ctx.today, -6), ctx.today)].filter(
+    (date) => stateOf(date) === 'rest',
+  ).length;
   return { minutesOn, stateOf, streak: streak(stateOf, ctx.today), restDaysThisWeek };
 }

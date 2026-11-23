@@ -16,30 +16,48 @@ interface HttpParserError {
 }
 
 function isMongoDuplicateKey(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+  return (
+    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000
+  );
 }
 
 function classify(error: unknown): { status: number; body: ErrorBody } {
   if (error instanceof AppError) {
     return {
       status: error.statusCode,
-      body: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) },
+      body: {
+        code: error.code,
+        message: error.message,
+        ...(error.details ? { details: error.details } : {}),
+      },
     };
   }
   const parserError = error as HttpParserError;
   if (parserError?.type === 'entity.parse.failed') {
-    return { status: 400, body: { code: 'MALFORMED_JSON', message: 'The request body is not valid JSON' } };
+    return {
+      status: 400,
+      body: { code: 'MALFORMED_JSON', message: 'The request body is not valid JSON' },
+    };
   }
   if (parserError?.type === 'entity.too.large') {
-    return { status: 413, body: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large' } };
+    return {
+      status: 413,
+      body: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large' },
+    };
   }
   if (error instanceof mongoose.Error.CastError) {
-    return { status: 400, body: { code: 'INVALID_ID', message: 'An identifier in the request is not valid' } };
+    return {
+      status: 400,
+      body: { code: 'INVALID_ID', message: 'An identifier in the request is not valid' },
+    };
   }
   if (isMongoDuplicateKey(error)) {
     return { status: 409, body: { code: 'DUPLICATE', message: 'That record already exists' } };
   }
-  return { status: 500, body: { code: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' } };
+  return {
+    status: 500,
+    body: { code: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' },
+  };
 }
 
 /** Converts any thrown error into the standard error envelope. Never leaks stacks outside development. */
@@ -61,6 +79,10 @@ export function createErrorHandler(logger: Logger, exposeStack: boolean) {
 export function notFoundHandler(_req: Request, res: Response): void {
   res.status(404).json({
     success: false,
-    error: { code: 'ROUTE_NOT_FOUND', message: 'No such endpoint', requestId: res.locals.requestId },
+    error: {
+      code: 'ROUTE_NOT_FOUND',
+      message: 'No such endpoint',
+      requestId: res.locals.requestId,
+    },
   });
 }

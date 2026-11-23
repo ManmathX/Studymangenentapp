@@ -18,6 +18,13 @@ import { addDays, localTodayKey, plural, shortDate } from '../../utils/format';
 import { rules } from '../../utils/validation';
 import { FieldHeading, StepLayout } from './StepLayout';
 
+/** Local ids for tests drafted during setup; the server assigns real ids on "Build my plan". */
+let draftSequence = 0;
+const nextDraftId = () => {
+  draftSequence += 1;
+  return `draft-${draftSequence}`;
+};
+
 export function TestsStep({ navigation }) {
   const { colors } = useTheme();
   const draft = useOnboardingStore((state) => state.draft);
@@ -42,7 +49,7 @@ export function TestsStep({ navigation }) {
       setChapterError('Tick at least one chapter in this test.');
       return;
     }
-    addExam({ id: `${Date.now()}`, subject, name: name.trim(), date, weight: 20, chapterKeys });
+    addExam({ id: nextDraftId(), subject, name: name.trim(), date, weight: 20, chapterKeys });
     reset({ name: '' });
     setChapterKeys([]);
     toast(`${name.trim()} added.`);

@@ -31,8 +31,9 @@ export const useTimerStore = create((set, get) => ({
     set({ totalSeconds: minutes * 60, leftSeconds: minutes * 60 });
   },
 
+  /** Development aid only: release builds always run in real time. */
   setFastForward(fastForward) {
-    set({ fastForward });
+    set({ fastForward: __DEV__ && fastForward });
   },
 
   toggle() {

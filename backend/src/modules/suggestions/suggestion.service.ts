@@ -25,11 +25,18 @@ export class SuggestionService {
 
   /** Turns tasks that slipped in the last week into one pending "move" suggestion each (idempotent). */
   async refreshMissedTasks(userId: string, ctx: StudentDay): Promise<void> {
-    const slipped = await this.tasks.findSlipped(userId, addDays(ctx.today, -MISSED_LOOKBACK_DAYS), ctx.today);
+    const slipped = await this.tasks.findSlipped(
+      userId,
+      addDays(ctx.today, -MISSED_LOOKBACK_DAYS),
+      ctx.today,
+    );
     if (!slipped.length) return;
-    const load = new DayLoad(await this.tasks.findInRange(userId, ctx.today, addDays(ctx.today, 7)));
+    const load = new DayLoad(
+      await this.tasks.findInRange(userId, ctx.today, addDays(ctx.today, 7)),
+    );
     for (const task of slipped) {
-      const date = bestDay(load, ctx.profile, task.mins, ctx.start, addDays(ctx.start, 5)) ?? ctx.start;
+      const date =
+        bestDay(load, ctx.profile, task.mins, ctx.start, addDays(ctx.start, 5)) ?? ctx.start;
       load.add({ date, mins: task.mins, status: 'suggested' });
       await this.suggestions.ensureMoveSuggestion(userId, {
         from: 'app',
@@ -52,7 +59,12 @@ export class SuggestionService {
     const target = date ?? suggestion.date;
     return this.transactions.run(async (tx) => {
       if (suggestion.kind === 'move' && suggestion.taskId) {
-        await this.tasks.update(userId, suggestion.taskId, { date: target, status: 'accepted' }, tx);
+        await this.tasks.update(
+          userId,
+          suggestion.taskId,
+          { date: target, status: 'accepted' },
+          tx,
+        );
       } else {
         await this.tasks.insertMany(
           userId,
@@ -98,7 +110,8 @@ export class SuggestionService {
     const suggestion = await this.requireOpen(userId, id);
     const from = addDays(suggestion.date, 1) > ctx.today ? addDays(suggestion.date, 1) : ctx.today;
     const load = new DayLoad(await this.tasks.findInRange(userId, from, addDays(from, 6)));
-    const date = bestDay(load, ctx.profile, suggestion.mins, from, addDays(suggestion.date, 6)) ?? from;
+    const date =
+      bestDay(load, ctx.profile, suggestion.mins, from, addDays(suggestion.date, 6)) ?? from;
     return this.accept(userId, id, date);
   }
 

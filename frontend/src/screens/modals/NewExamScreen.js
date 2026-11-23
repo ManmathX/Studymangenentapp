@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
@@ -33,11 +33,10 @@ export function ExamForm({ profile, onDone, submit = examActions.create }) {
   const {
     control,
     handleSubmit,
-    watch,
     setValue,
     formState: { isSubmitting, errors },
   } = useForm({ defaultValues: { name: '', subject: profile.subjects[0], date: addDays(today, 10), weight: 20, chapterKeys: [] } });
-  const subject = watch('subject');
+  const subject = useWatch({ control, name: 'subject' });
   const chapters = useResource(resources.chapters(subject));
 
   const onSubmit = handleSubmit(async (values) => {

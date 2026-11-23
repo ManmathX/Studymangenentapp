@@ -7,7 +7,15 @@ import { Platform } from 'react-native';
  */
 const fallbackHost = Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
 
-export const API_ORIGIN = (process.env.EXPO_PUBLIC_API_URL || fallbackHost).replace(/\/$/, '');
+const configured = process.env.EXPO_PUBLIC_API_URL;
+
+export const API_ORIGIN = (configured || fallbackHost).replace(/\/$/, '');
+
+// Release builds must be pointed at a real, encrypted API. Fail loudly in the logs if not.
+if (!__DEV__) {
+  if (!configured) console.error(`EXPO_PUBLIC_API_URL was not set at build time; this build calls ${API_ORIGIN}.`);
+  else if (!API_ORIGIN.startsWith('https://')) console.error(`EXPO_PUBLIC_API_URL should use https in release builds (got ${API_ORIGIN}).`);
+}
 export const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 export const REQUEST_TIMEOUT_MS = 15000;
 /** Cached screen data younger than this is shown without refetching on focus. */

@@ -39,7 +39,8 @@ export class TokenService implements AccessTokenVerifier {
       }
       return { userId: payload.sub, role: payload.role as Role };
     } catch (error) {
-      if (error instanceof jwt.TokenExpiredError) throw new UnauthorizedError('Your session has expired', 'TOKEN_EXPIRED');
+      if (error instanceof jwt.TokenExpiredError)
+        throw new UnauthorizedError('Your session has expired', 'TOKEN_EXPIRED');
       if (error instanceof UnauthorizedError) throw error;
       throw new UnauthorizedError('Your session is not valid', 'TOKEN_INVALID');
     }

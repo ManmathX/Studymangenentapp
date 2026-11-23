@@ -27,6 +27,21 @@ export const refreshBodySchema = z
   .strictObject({ refreshToken: z.string().min(20).max(200) })
   .openapi('RefreshRequest');
 
+export const changePasswordBodySchema = z
+  .strictObject({
+    currentPassword: z.string().min(1, 'Enter your current password').max(128),
+    newPassword: password,
+  })
+  .refine((body) => body.newPassword !== body.currentPassword, {
+    message: 'Choose a password different from the current one',
+    path: ['newPassword'],
+  })
+  .openapi('ChangePasswordRequest');
+
+export const deleteAccountBodySchema = z
+  .strictObject({ password: z.string().min(1, 'Enter your password').max(128) })
+  .openapi('DeleteAccountRequest');
+
 export const userSchema = z
   .object({
     id: z.string(),

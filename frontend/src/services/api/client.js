@@ -85,5 +85,5 @@ export const api = {
   post: (url, body) => request('post', url, { body }).then((result) => result.data),
   put: (url, body) => request('put', url, { body }).then((result) => result.data),
   patch: (url, body) => request('patch', url, { body }).then((result) => result.data),
-  delete: (url) => request('delete', url).then((result) => result.data),
+  delete: (url, body) => request('delete', url, { body }).then((result) => result.data),
 };

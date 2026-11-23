@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.data
+tests
+*.log
+.env
+.env.*
+!.env.example
+openapi.json
+Dockerfile
+.dockerignore

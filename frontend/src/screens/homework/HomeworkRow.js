@@ -6,7 +6,7 @@ import { subjects } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
 import { dayName, duration } from '../../utils/format';
 
-function HomeworkRowBase({ item, today, onToggle, disabled }) {
+function HomeworkRowBase({ item, today, onToggle, onDelete, disabled }) {
   const { colors } = useTheme();
   const color = subjects[item.subject].color;
   return (
@@ -37,6 +37,19 @@ function HomeworkRowBase({ item, today, onToggle, disabled }) {
           </Text>
         ) : null}
       </View>
+      {onDelete ? (
+        <Pressable
+          onPress={() => onDelete(item)}
+          disabled={disabled}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete homework: ${item.title}`}
+          style={({ pressed }) => [styles.delete, { opacity: disabled ? 0.4 : pressed ? 0.5 : 1 }]}
+          testID={`delete-homework-${item.id}`}
+        >
+          <Icon name="trash" size={18} color={colors.textTertiary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -50,4 +63,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 16 },
   meta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   note: { fontSize: 13, padding: 8, borderRadius: 8, marginTop: 4, overflow: 'hidden' },
+  delete: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginTop: -4 },
 });

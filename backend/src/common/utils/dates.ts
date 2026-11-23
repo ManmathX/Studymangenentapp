@@ -58,6 +58,7 @@ export function localNow(now: Date, timeZone: string): { date: DateKey; hour: nu
     hour: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(now);
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '00';
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '00';
   return { date: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) };
 }

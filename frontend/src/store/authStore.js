@@ -49,6 +49,18 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  /** Signs out every other device; this one keeps working with the new token pair. Throws ApiError for forms. */
+  async changePassword(currentPassword, newPassword) {
+    const tokens = await authApi.changePassword(currentPassword, newPassword);
+    await tokenStorage.saveTokens(tokens);
+  },
+
+  /** Permanently deletes the account on the server, then forgets the session here. */
+  async deleteAccount(password) {
+    await authApi.deleteAccount(password);
+    get().clearSession();
+  },
+
   setOnboarded(onboarded) {
     useResourceStore.getState().reset();
     set({ onboarded });

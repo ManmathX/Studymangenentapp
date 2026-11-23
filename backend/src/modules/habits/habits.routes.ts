@@ -8,7 +8,14 @@ const dailyLogSchema = z
   .object({
     date: z.string(),
     rest: z.boolean(),
-    checkin: z.object({ sleep: z.number(), breaks: z.number().int(), screen: z.enum(SCREEN_TIME_OPTIONS), saved: z.boolean() }).nullable(),
+    checkin: z
+      .object({
+        sleep: z.number(),
+        breaks: z.number().int(),
+        screen: z.enum(SCREEN_TIME_OPTIONS),
+        saved: z.boolean(),
+      })
+      .nullable(),
     routines: z.object({ morning: z.array(z.boolean()), evening: z.array(z.boolean()) }).nullable(),
     bag: z.record(z.string(), z.boolean()),
   })
@@ -36,7 +43,12 @@ export function habitsRoutes(habits: HabitsService): Route[] {
       tags,
       status: 201,
       body: z.strictObject({ subject: subjectSchema, mins: z.number().int().min(1).max(240) }),
-      response: z.object({ id: z.string(), date: z.string(), subject: subjectSchema, mins: z.number().int() }),
+      response: z.object({
+        id: z.string(),
+        date: z.string(),
+        subject: subjectSchema,
+        mins: z.number().int(),
+      }),
       handler: ({ auth, body }) => habits.logFocus(auth.userId, body),
     }),
     defineRoute({
@@ -88,10 +100,14 @@ export function habitsRoutes(habits: HabitsService): Route[] {
       access: 'user',
       summary: 'Tick or untick a bag item',
       tags,
-      params: z.object({ date: dateKeySchema, itemId: z.string().regex(/^[A-Za-z0-9-]{1,40}$/, 'Invalid item') }),
+      params: z.object({
+        date: dateKeySchema,
+        itemId: z.string().regex(/^[A-Za-z0-9-]{1,40}$/, 'Invalid item'),
+      }),
       body: z.strictObject({ checked: z.boolean() }),
       response: bagSchema,
-      handler: ({ auth, params, body }) => habits.setBagItem(auth.userId, params.date, params.itemId, body.checked),
+      handler: ({ auth, params, body }) =>
+        habits.setBagItem(auth.userId, params.date, params.itemId, body.checked),
     }),
   ];
 }

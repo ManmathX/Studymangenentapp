@@ -27,7 +27,10 @@ export interface AuditRepository {
 
 export class MongoAuditRepository implements AuditRepository {
   async insert(entry: AuditEntry): Promise<void> {
-    await AuditLogModel.create({ ...entry, userId: entry.userId ? toObjectId(entry.userId) : null });
+    await AuditLogModel.create({
+      ...entry,
+      userId: entry.userId ? toObjectId(entry.userId) : null,
+    });
   }
 
   async list(query: AuditListQuery): Promise<{ items: AuditRecord[]; total: number }> {
@@ -35,7 +38,11 @@ export class MongoAuditRepository implements AuditRepository {
     if (query.action) filter.action = query.action;
     if (query.userId) filter.userId = toObjectId(query.userId);
     const [docs, total] = await Promise.all([
-      AuditLogModel.find(filter).sort({ at: -1 }).skip(skipFor(query)).limit(query.limit).lean<AuditLogDocument[]>(),
+      AuditLogModel.find(filter)
+        .sort({ at: -1 })
+        .skip(skipFor(query))
+        .limit(query.limit)
+        .lean<AuditLogDocument[]>(),
       AuditLogModel.countDocuments(filter),
     ]);
     return {

@@ -6,6 +6,8 @@ export const authApi = {
   register: (body) => api.post('/auth/register', body),
   logout: (refreshToken) => api.post('/auth/logout', { refreshToken }),
   me: () => api.get('/auth/me'),
+  changePassword: (currentPassword, newPassword) => api.post('/auth/password', { currentPassword, newPassword }),
+  deleteAccount: (password) => api.delete('/auth/account', { password }),
 };
 
 export const syllabusApi = {
@@ -70,6 +72,7 @@ export const homeworkApi = {
   summary: () => api.get('/homework/summary'),
   create: (body) => api.post('/homework', body),
   setDone: (id, done) => api.patch(`/homework/${id}`, { done }),
+  remove: (id) => api.delete(`/homework/${id}`),
 };
 
 export const habitsApi = {

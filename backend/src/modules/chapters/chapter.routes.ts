@@ -24,7 +24,15 @@ const proposalSchema = z
   .object({
     chapter: chapterSchema,
     exam: z.object({ id: z.string(), name: z.string(), date: z.string() }).nullable(),
-    steps: z.array(z.object({ index: z.number().int(), title: z.string(), mins: z.number().int(), kind: z.enum(TASK_KINDS), proposedDate: z.string() })),
+    steps: z.array(
+      z.object({
+        index: z.number().int(),
+        title: z.string(),
+        mins: z.number().int(),
+        kind: z.enum(TASK_KINDS),
+        proposedDate: z.string(),
+      }),
+    ),
     alreadyPlanned: z.array(taskSchema),
     dayOptions: z.array(z.string()),
   })
@@ -39,7 +47,10 @@ export function chapterRoutes(chapters: ChapterService): Route[] {
       access: 'user',
       summary: 'Syllabus chapters with status and planned steps',
       tags,
-      query: z.object({ subject: subjectSchema.optional(), status: z.enum(CHAPTER_STATUSES).optional() }),
+      query: z.object({
+        subject: subjectSchema.optional(),
+        status: z.enum(CHAPTER_STATUSES).optional(),
+      }),
       response: chapterSchema.extend({ plannedCount: z.number().int() }).array(),
       handler: ({ auth, query }) => chapters.list(auth.userId, query),
     }),
@@ -73,7 +84,10 @@ export function chapterRoutes(chapters: ChapterService): Route[] {
       status: 201,
       params: keyParams,
       body: z.strictObject({
-        steps: z.array(z.strictObject({ index: z.number().int().min(0).max(10), date: dateKeySchema })).min(1, 'Tick at least one step to add').max(10),
+        steps: z
+          .array(z.strictObject({ index: z.number().int().min(0).max(10), date: dateKeySchema }))
+          .min(1, 'Tick at least one step to add')
+          .max(10),
       }),
       response: taskSchema.array(),
       handler: ({ auth, params, body }) => chapters.schedule(auth.userId, params.key, body.steps),

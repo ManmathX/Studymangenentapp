@@ -52,6 +52,24 @@ const shapes = {
     </>
   ),
   dot: <Circle cx="12" cy="12" r="4" />,
+  trash: (
+    <>
+      <Path d="M4 7h16M10 11v6M14 11v6" />
+      <Path d="M6 7l1 13h10l1-13M9 7V4h6v3" />
+    </>
+  ),
+  key: (
+    <>
+      <Circle cx="8" cy="15" r="4" />
+      <Path d="M11 12l8-8M16 7l3 3" />
+    </>
+  ),
+  sun: (
+    <>
+      <Circle cx="12" cy="12" r="4" />
+      <Path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </>
+  ),
 };
 
 const filled = new Set(['play', 'spark', 'dot']);

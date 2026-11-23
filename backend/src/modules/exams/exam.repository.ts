@@ -19,12 +19,21 @@ export interface ExamRepository {
 }
 
 function toRecord(doc: ExamDocument): ExamRecord {
-  return { id: idOf(doc), subject: doc.subject, name: doc.name, date: doc.date, weight: doc.weight, chapterKeys: doc.chapterKeys };
+  return {
+    id: idOf(doc),
+    subject: doc.subject,
+    name: doc.name,
+    date: doc.date,
+    weight: doc.weight,
+    chapterKeys: doc.chapterKeys,
+  };
 }
 
 export class MongoExamRepository implements ExamRepository {
   async create(userId: string, exam: NewExam, tx?: TxHandle): Promise<ExamRecord> {
-    const [doc] = await ExamModel.create([{ ...exam, userId: toObjectId(userId) }], { session: tx });
+    const [doc] = await ExamModel.create([{ ...exam, userId: toObjectId(userId) }], {
+      session: tx,
+    });
     if (!doc) throw new Error('Exam insert returned no document');
     return toRecord(doc.toObject());
   }
@@ -32,7 +41,10 @@ export class MongoExamRepository implements ExamRepository {
   async insertMany(userId: string, exams: NewExam[], tx: TxHandle): Promise<ExamRecord[]> {
     if (!exams.length) return [];
     const owner = toObjectId(userId);
-    const docs = await ExamModel.insertMany(exams.map((exam) => ({ ...exam, userId: owner })), { session: tx });
+    const docs = await ExamModel.insertMany(
+      exams.map((exam) => ({ ...exam, userId: owner })),
+      { session: tx },
+    );
     return docs.map((doc) => toRecord(doc.toObject()));
   }
 
