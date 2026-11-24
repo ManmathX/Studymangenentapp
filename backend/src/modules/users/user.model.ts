@@ -5,7 +5,11 @@ export interface UserDocument {
   _id: Types.ObjectId;
   email: string;
   name: string;
-  passwordHash: string;
+  /** Absent for accounts created with Google sign-in. */
+  passwordHash?: string;
+  /** False for accounts that only sign in with Google. Missing on older accounts means true. */
+  hasPassword?: boolean;
+  googleId?: string;
   role: Role;
   lastLoginAt?: Date;
   createdAt: Date;
@@ -16,7 +20,9 @@ const userSchema = new Schema<UserDocument>(
   {
     email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254 },
     name: { type: String, required: true, trim: true, maxlength: 60 },
-    passwordHash: { type: String, required: true, select: false },
+    passwordHash: { type: String, select: false },
+    hasPassword: { type: Boolean, default: true },
+    googleId: { type: String, select: false },
     role: { type: String, enum: ['student', 'admin'], default: 'student' },
     lastLoginAt: { type: Date },
   },
@@ -24,6 +30,10 @@ const userSchema = new Schema<UserDocument>(
 );
 
 userSchema.index({ email: 1 }, { unique: true });
+userSchema.index(
+  { googleId: 1 },
+  { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } },
+);
 userSchema.index({ role: 1, createdAt: -1 });
 
 export const UserModel = model<UserDocument>('User', userSchema);

@@ -10,7 +10,7 @@ import { AsyncBoundary } from '../../components/ui/States';
 import { useResource } from '../../hooks/useResource';
 import { homeworkActions } from '../../services/actions';
 import { resources } from '../../services/resources';
-import { subjects as subjectInfo } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { addDays, duration } from '../../utils/format';
 import { rules } from '../../utils/validation';
@@ -28,6 +28,7 @@ export function NewHomeworkScreen({ navigation }) {
 
 export function HomeworkForm({ profile, onDone, submit = homeworkActions.create }) {
   const { colors } = useTheme();
+  const subjectOf = useSubjectInfo();
   const today = profile.today;
   const days = useMemo(() => Array.from({ length: 31 }, (_, index) => addDays(today, index)), [today]);
   const {
@@ -52,7 +53,7 @@ export function HomeworkForm({ profile, onDone, submit = homeworkActions.create 
           render={({ field: { value, onChange } }) => (
             <ChipGroup label="Subject">
               {profile.subjects.map((id) => (
-                <Chip key={id} label={subjectInfo[id].name} color={subjectInfo[id].color} selected={value === id} onPress={() => onChange(id)} />
+                <Chip key={id} label={subjectOf(id).name} color={subjectOf(id).color} selected={value === id} onPress={() => onChange(id)} />
               ))}
             </ChipGroup>
           )}

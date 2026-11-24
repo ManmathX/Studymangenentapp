@@ -64,6 +64,12 @@ const shapes = {
       <Path d="M11 12l8-8M16 7l3 3" />
     </>
   ),
+  pencil: (
+    <>
+      <Path d="M16.5 3.5l4 4L8 20H4v-4z" />
+      <Path d="M14 6l4 4" />
+    </>
+  ),
   sun: (
     <>
       <Circle cx="12" cy="12" r="4" />

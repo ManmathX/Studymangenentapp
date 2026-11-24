@@ -57,6 +57,7 @@ export function RootNavigator() {
         <Stack.Screen name="ScheduleChapter" getComponent={lazy.ScheduleChapter} options={{ title: 'Schedule' }} />
         <Stack.Screen name="NewHomework" getComponent={lazy.NewHomework} options={{ title: 'New Homework' }} />
         <Stack.Screen name="NewExam" getComponent={lazy.NewExam} options={{ title: 'New Test' }} />
+        <Stack.Screen name="EditExam" getComponent={lazy.NewExam} options={{ title: 'Edit Test' }} />
         <Stack.Screen name="ChangePassword" getComponent={lazy.ChangePassword} options={{ title: 'Change Password' }} />
         <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete Account' }} />
       </Stack.Group>

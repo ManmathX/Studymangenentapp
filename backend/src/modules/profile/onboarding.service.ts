@@ -1,4 +1,4 @@
-import { BadRequestError, ConflictError } from '../../common/errors/app-error.js';
+import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors/app-error.js';
 import type { RequestMeta } from '../../common/http/types.js';
 import { addDays } from '../../common/utils/dates.js';
 import type { TransactionRunner, TxHandle } from '../../database/transaction.js';
@@ -11,12 +11,77 @@ import { DayLoad } from '../planner/planner.engine.js';
 import { blockToTask, summarize, type SchedulingService } from '../planner/scheduling.service.js';
 import type { StudentContext } from '../planner/student-context.js';
 import type { SuggestionRepository } from '../suggestions/suggestion.repository.js';
-import { catalogChapters, isSupportedClass } from '../syllabus/syllabus.data.js';
+import type { CatalogService } from '../syllabus/catalog.service.js';
 import type { TaskRepository } from '../tasks/task.repository.js';
 import { buildDemoData } from './demo-seed.js';
+import type { ProfileSubject } from './profile.model.js';
 import type { OnboardingBody } from './profile.schemas.js';
 import type { NewProfile, ProfileRepository } from './profile.repository.js';
 import type { ProfileService } from './profile.service.js';
+
+/** Chapters of a subject the student added themselves start at medium difficulty. */
+const CUSTOM_CHAPTER_DIFFICULTY = 2;
+
+/** A board or class missing from the catalogue is a bad setup answer here, not a missing page. */
+async function asBadRequest<T>(load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    if (error instanceof NotFoundError) throw new BadRequestError(error.message, error.code);
+    throw error;
+  }
+}
+
+/**
+ * Works out the student's subjects and chapters from the board's catalogue plus any subjects
+ * they added. Throws a 400 for anything that doesn't fit together.
+ */
+async function resolveSubjects(catalogService: CatalogService, body: OnboardingBody) {
+  const catalog = await asBadRequest(() => catalogService.subjectsFor(body.board, body.cls));
+  const chosen = new Set(body.subjects);
+  if (chosen.size !== body.subjects.length)
+    throw new BadRequestError('A subject is listed twice', 'DUPLICATE_SUBJECT');
+
+  const names = new Set(catalog.map((subject) => subject.name.toLowerCase()));
+  const customIds = new Set<string>();
+  for (const custom of body.customSubjects) {
+    if (customIds.has(custom.id))
+      throw new BadRequestError('Two added subjects share an id', 'DUPLICATE_SUBJECT');
+    if (names.has(custom.name.toLowerCase()))
+      throw new BadRequestError(
+        `You already have a subject called ${custom.name}`,
+        'DUPLICATE_SUBJECT',
+      );
+    customIds.add(custom.id);
+    names.add(custom.name.toLowerCase());
+  }
+  const catalogIds = new Set(catalog.map((subject) => subject.id));
+  for (const id of chosen) {
+    if (!catalogIds.has(id) && !customIds.has(id))
+      throw new BadRequestError(`Unknown subject ${id}`, 'UNKNOWN_SUBJECT');
+  }
+
+  const picked = catalog.filter((subject) => chosen.has(subject.id));
+  const added = body.customSubjects.filter((subject) => chosen.has(subject.id));
+  const subjectInfo: ProfileSubject[] = [
+    ...picked.map(({ id, name, color }) => ({ id, name, color, custom: false })),
+    ...added.map(({ id, name, color }) => ({ id, name, color, custom: true })),
+  ];
+  const chapters = [
+    ...picked.flatMap((subject) =>
+      subject.chapters.map((chapter) => ({ ...chapter, subject: subject.id })),
+    ),
+    ...added.flatMap((subject) =>
+      subject.chapters.map((name, index) => ({
+        key: `${subject.id}-${index + 1}`,
+        subject: subject.id,
+        name,
+        difficulty: CUSTOM_CHAPTER_DIFFICULTY,
+      })),
+    ),
+  ];
+  return { subjectInfo, chapters };
+}
 
 const toMinutes = (time: string) => {
   const [hours, minutes] = time.split(':').map(Number) as [number, number];
@@ -37,23 +102,24 @@ export class OnboardingService {
     private readonly habits: HabitsRepository,
     private readonly scheduling: SchedulingService,
     private readonly audit: AuditSink,
+    private readonly catalog: CatalogService,
   ) {}
 
   /** Creates the profile, chapters, tests and first suggested study blocks in one transaction. */
   async onboard(userId: string, body: OnboardingBody) {
     if (await this.profiles.findByUser(userId))
       throw new ConflictError('Your planner is already set up', 'ALREADY_ONBOARDED');
-    if (!isSupportedClass(body.cls))
-      throw new BadRequestError('That class is not available yet', 'CLASS_NOT_AVAILABLE');
+    const board = await asBadRequest(() => this.catalog.requireBoard(body.board));
     const { today, start } = this.context.today(body.timezone);
 
-    const catalog = catalogChapters(body.cls, body.subjects);
+    const { subjectInfo, chapters: catalog } = await resolveSubjects(this.catalog, body);
+    const subjects = subjectInfo.map((subject) => subject.id);
     const known = new Set(catalog.map((chapter) => chapter.key));
     const taught = new Set(body.taughtChapterKeys);
     for (const key of taught)
       if (!known.has(key)) throw new BadRequestError(`Unknown chapter ${key}`, 'UNKNOWN_CHAPTER');
     for (const exam of body.exams) {
-      if (!body.subjects.includes(exam.subject))
+      if (!subjects.includes(exam.subject))
         throw new BadRequestError(
           `${exam.name} is for a subject you turned off`,
           'SUBJECT_NOT_SELECTED',
@@ -78,9 +144,11 @@ export class OnboardingService {
     }));
     const profile: NewProfile = {
       cls: body.cls,
-      board: 'CBSE',
+      board: board.code,
+      boardName: board.name,
       timezone: body.timezone,
-      subjects: body.subjects,
+      subjects,
+      subjectInfo,
       schoolStart: toMinutes(body.schoolStart),
       schoolEnd: toMinutes(body.schoolEnd),
       tuitionDays: [...new Set(body.tuitionDays)].sort(),

@@ -16,7 +16,7 @@ import { REVISION_INTERVALS } from '../planner/planner.types.js';
 import type { StudentContext } from '../planner/student-context.js';
 import type { SuggestionRepository } from '../suggestions/suggestion.repository.js';
 import type { SuggestionService } from '../suggestions/suggestion.service.js';
-import { ROUTINES, SUBJECTS } from '../syllabus/syllabus.data.js';
+import { ROUTINES, subjectName } from '../syllabus/syllabus.data.js';
 import { toTaskDto } from '../tasks/task.dto.js';
 import type { TaskRepository } from '../tasks/task.repository.js';
 import type { UserRepository } from '../users/user.repository.js';
@@ -121,7 +121,12 @@ export class DashboardService {
       coverage: coverage(chapters),
       subjects: ctx.profile.subjects.map((subject) => {
         const list = chapters.filter((chapter) => chapter.subject === subject);
-        return { subject, name: SUBJECTS[subject].name, coverage: coverage(list), chapters: list };
+        return {
+          subject,
+          name: subjectName(subject, ctx.profile.subjectInfo),
+          coverage: coverage(list),
+          chapters: list,
+        };
       }),
       last7,
       weekMins: last7.reduce((sum, day) => sum + day.mins, 0),
@@ -196,6 +201,7 @@ export class DashboardService {
       name: user?.name ?? '',
       cls: ctx.profile.cls,
       board: ctx.profile.board,
+      boardName: ctx.profile.boardName,
       ageMode: ctx.profile.ageMode,
       examSeason: ctx.profile.examSeason,
       sharing: ctx.profile.sharing,

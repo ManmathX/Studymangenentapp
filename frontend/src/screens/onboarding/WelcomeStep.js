@@ -17,7 +17,7 @@ export function WelcomeStep({ navigation }) {
   return (
     <StepLayout
       title={`Hi ${name ?? 'there'}.\nLet’s build your plan.`}
-      lead="Pick your class and every NCERT chapter is ready for you. You decide when to study each one."
+      lead="Pick your board and class and every chapter is ready for you. You decide when to study each one."
       footer={
         <>
           <Button title="Get started" variant="primary" block onPress={() => navigation.navigate('ClassStep')} testID="onboarding-start" />

@@ -78,3 +78,22 @@ jobs:
         run: npx expo export --platform web
         env:
           EXPO_PUBLIC_API_URL: https://api.example.com
+
+  adminwebsite:
+    name: Admin portal (lint, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adminwebsite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: adminwebsite/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          VITE_API_URL: https://api.example.com

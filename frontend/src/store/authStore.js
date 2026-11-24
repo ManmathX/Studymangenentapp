@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { refreshSession, setSessionExpiredHandler } from '../services/api/client';
 import { authApi } from '../services/api/endpoints';
+import { signOutOfGoogle } from '../services/googleSignIn';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import { useResourceStore } from './resourceStore';
+import { setKnownSubjects } from './subjectStore';
 
 /**
  * status: 'booting' while restoring a saved session, then 'signedOut' or 'signedIn'.
@@ -34,6 +36,13 @@ export const useAuthStore = create((set, get) => ({
     set({ status: 'signedIn', user: session.user, onboarded: session.onboarded });
   },
 
+  /** Signs in (or signs up) with an ID token from Google Sign-In. */
+  async loginWithGoogle(idToken) {
+    const session = await authApi.google(idToken);
+    await tokenStorage.saveTokens(session.tokens);
+    set({ status: 'signedIn', user: session.user, onboarded: session.onboarded });
+  },
+
   async register(details) {
     const session = await authApi.register(details);
     await tokenStorage.saveTokens(session.tokens);
@@ -55,7 +64,7 @@ export const useAuthStore = create((set, get) => ({
     await tokenStorage.saveTokens(tokens);
   },
 
-  /** Permanently deletes the account on the server, then forgets the session here. */
+  /** Permanently deletes the account on the server, then forgets the session here. Google-only accounts send no password. */
   async deleteAccount(password) {
     await authApi.deleteAccount(password);
     get().clearSession();
@@ -69,6 +78,8 @@ export const useAuthStore = create((set, get) => ({
   clearSession() {
     tokenStorage.clear();
     useResourceStore.getState().reset();
+    setKnownSubjects([]);
+    signOutOfGoogle();
     set({ status: 'signedOut', user: null, onboarded: false });
   },
 }));

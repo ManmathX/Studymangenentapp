@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { chapterStatus, subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
+import { chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
 
 export const StatusDot = memo(function StatusDot({ status, size = 10 }) {
@@ -14,8 +15,10 @@ export const StatusDot = memo(function StatusDot({ status, size = 10 }) {
   );
 });
 
-export const SubjectDot = memo(function SubjectDot({ subject, size = 8 }) {
-  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: subjects[subject]?.color ?? '#999' }} />;
+/** Pass `color` when the subject isn't on the profile yet (during setup). */
+export const SubjectDot = memo(function SubjectDot({ subject, size = 8, color }) {
+  const subjectOf = useSubjectInfo();
+  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? subjectOf(subject).color }} />;
 });
 
 const TAG_COLORS = { app: '#007AFF', teacher: '#AF52DE', parent: '#FF9500', high: '#FF3B30', medium: '#FF9500', suggested: '#007AFF' };

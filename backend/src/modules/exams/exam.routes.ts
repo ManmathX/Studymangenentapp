@@ -1,6 +1,7 @@
 import { defineRoute, type Route } from '../../common/http/route.js';
 import { z } from '../../common/zod.js';
 import {
+  chapterKeySchema,
   dateKeySchema,
   idParamsSchema,
   subjectSchema,
@@ -8,6 +9,11 @@ import {
 } from '../../common/utils/validators.js';
 import { CHAPTER_STATUSES } from '../planner/planner.types.js';
 import type { ExamService } from './exam.service.js';
+
+const chapterKeysSchema = z
+  .array(chapterKeySchema)
+  .min(1, 'Tick at least one chapter so the planner knows what to revise')
+  .max(40);
 
 const examSchema = z
   .object({
@@ -55,14 +61,34 @@ export function examRoutes(exams: ExamService): Route[] {
           name: trimmedText(1, 80),
           date: dateKeySchema,
           weight: z.number().int().min(1).max(100),
-          chapterKeys: z
-            .array(z.string().regex(/^[a-z]+-\d{1,2}$/))
-            .min(1, 'Tick at least one chapter so the planner knows what to revise')
-            .max(40),
+          chapterKeys: chapterKeysSchema,
         })
         .openapi('NewExam'),
       response: examSchema,
       handler: ({ auth, body }) => exams.create(auth.userId, body),
+    }),
+    defineRoute({
+      method: 'patch',
+      path: '/exams/:id',
+      access: 'user',
+      summary: 'Edit a test',
+      description:
+        'Send only what changes. Changing the subject needs the chapters of the new subject. ' +
+        'Study blocks already in the plan stay where they are.',
+      tags,
+      params: idParamsSchema,
+      body: z
+        .strictObject({
+          subject: subjectSchema.optional(),
+          name: trimmedText(1, 80).optional(),
+          date: dateKeySchema.optional(),
+          weight: z.number().int().min(1).max(100).optional(),
+          chapterKeys: chapterKeysSchema.optional(),
+        })
+        .refine((body) => Object.keys(body).length > 0, 'Send at least one field to change')
+        .openapi('ExamPatch'),
+      response: examSchema,
+      handler: ({ auth, params, body }) => exams.update(auth.userId, params.id, body),
     }),
     defineRoute({
       method: 'delete',

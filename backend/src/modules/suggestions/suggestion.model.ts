@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 
 export const SUGGESTION_STATES = ['pending', 'accepted', 'later', 'skipped'] as const;
 export type SuggestionState = (typeof SUGGESTION_STATES)[number];
@@ -31,7 +31,7 @@ const suggestionSchema = new Schema<SuggestionDocument>(
     from: { type: String, enum: SUGGESTION_SOURCES, default: 'app' },
     who: { type: String, default: 'Planner' },
     role: { type: String, default: '' },
-    subject: { type: String, enum: SUBJECT_IDS, required: true },
+    subject: { type: String, match: SUBJECT_ID_PATTERN, required: true },
     title: { type: String, required: true },
     mins: { type: Number, required: true },
     date: { type: String, required: true },

@@ -1,11 +1,11 @@
 import { defineRoute, type Route } from '../../common/http/route.js';
 import { z } from '../../common/zod.js';
-import { dateKeySchema, subjectSchema } from '../../common/utils/validators.js';
+import { chapterKeySchema, dateKeySchema, subjectSchema } from '../../common/utils/validators.js';
 import { CHAPTER_STATUSES, TASK_KINDS } from '../planner/planner.types.js';
 import { taskSchema } from '../tasks/task.dto.js';
 import type { ChapterService } from './chapter.service.js';
 
-const keyParams = z.object({ key: z.string().regex(/^[a-z]+-\d{1,2}$/, 'Invalid chapter key') });
+const keyParams = z.object({ key: chapterKeySchema });
 
 const chapterSchema = z
   .object({

@@ -1,5 +1,5 @@
 import { z } from '../../common/zod.js';
-import { SUBJECT_IDS } from '../syllabus/syllabus.data.js';
+import { subjectSchema } from '../../common/utils/validators.js';
 import { TASK_KINDS, TASK_SOURCES, TASK_STATUSES } from '../planner/planner.types.js';
 import type { TaskRecord } from './task.repository.js';
 
@@ -7,7 +7,7 @@ export const taskSchema = z
   .object({
     id: z.string(),
     date: z.string(),
-    subject: z.enum(SUBJECT_IDS),
+    subject: subjectSchema,
     title: z.string(),
     kind: z.enum(TASK_KINDS),
     mins: z.number().int(),

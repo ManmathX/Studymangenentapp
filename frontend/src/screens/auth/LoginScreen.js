@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { applyServerErrors, rules } from '../../utils/validation';
 import { AuthLayout } from './AuthLayout';
+import { GoogleButton } from './GoogleButton';
 
 export function LoginScreen({ navigation }) {
   const login = useAuthStore((state) => state.login);
@@ -27,6 +28,7 @@ export function LoginScreen({ navigation }) {
 
   return (
     <AuthLayout title="Welcome back" subtitle="Sign in to see today’s plan.">
+      <GoogleButton />
       <FormField control={control} name="email" rules={rules.email} label="Email" placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" returnKeyType="next" />
       <FormField control={control} name="password" rules={rules.loginPassword} label="Password" placeholder="Your password" secureTextEntry autoComplete="password" textContentType="password" onSubmitEditing={onSubmit} returnKeyType="go" />
       {errors.root ? (
@@ -34,7 +36,7 @@ export function LoginScreen({ navigation }) {
           {errors.root.message}
         </Text>
       ) : null}
-      <Button title="Sign in" variant="primary" onPress={onSubmit} loading={isSubmitting} block testID="login-submit" />
+      <Button title="Sign in with email" variant="primary" onPress={onSubmit} loading={isSubmitting} block testID="login-submit" />
       <Button title="New here? Create an account" variant="ghost" onPress={() => navigation.navigate('Register')} />
     </AuthLayout>
   );

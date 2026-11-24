@@ -10,7 +10,7 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
 import { chapterActions, habitActions } from '../../services/actions';
 import { resources } from '../../services/resources';
-import { subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { dayName, duration } from '../../utils/format';
 import { FocusTimer } from './FocusTimer';
@@ -80,6 +80,7 @@ function LegendDot({ color, border, label }) {
 
 function FocusSessions({ sessions }) {
   const { colors } = useTheme();
+  const subjectOf = useSubjectInfo();
   return (
     <Card flush>
       {sessions.map((session, index) => (
@@ -87,7 +88,7 @@ function FocusSessions({ sessions }) {
           {index ? <Divider /> : null}
           <View style={styles.session}>
             <SubjectDot subject={session.subject} size={10} />
-            <Text style={[styles.flex, { color: colors.text }]}>{subjects[session.subject].name}</Text>
+            <Text style={[styles.flex, { color: colors.text }]}>{subjectOf(session.subject).name}</Text>
             <Muted small>{duration(session.mins)}</Muted>
           </View>
         </View>

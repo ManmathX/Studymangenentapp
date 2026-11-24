@@ -39,8 +39,25 @@ export const changePasswordBodySchema = z
   .openapi('ChangePasswordRequest');
 
 export const deleteAccountBodySchema = z
-  .strictObject({ password: z.string().min(1, 'Enter your password').max(128) })
+  .strictObject({
+    password: z
+      .string()
+      .min(1, 'Enter your password')
+      .max(128)
+      .optional()
+      .openapi({ description: 'Required unless the account only signs in with Google' }),
+  })
   .openapi('DeleteAccountRequest');
+
+export const googleLoginBodySchema = z
+  .strictObject({
+    idToken: z
+      .string()
+      .min(20)
+      .max(4096)
+      .openapi({ description: 'ID token from Google Sign-In on the device' }),
+  })
+  .openapi('GoogleLoginRequest');
 
 export const userSchema = z
   .object({
@@ -48,6 +65,7 @@ export const userSchema = z
     email: z.string(),
     name: z.string(),
     role: z.enum(['student', 'admin']),
+    hasPassword: z.boolean(),
     createdAt: z.string(),
     lastLoginAt: z.string().nullable(),
   })

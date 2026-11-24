@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Layout';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { taskActions } from '../../services/actions';
-import { subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { clockTime, duration } from '../../utils/format';
 
@@ -54,13 +54,14 @@ const TaskBlock = memo(function TaskBlock({ row, ageMode, canMove, onAction, bus
   const { colors } = useTheme();
   const { task } = row;
   const suggested = task.status === 'suggested';
-  const color = subjects[task.subject].color;
+  const subjectOf = useSubjectInfo();
+  const color = subjectOf(task.subject).color;
   return (
     <View style={styles.block}>
       <Text style={[styles.at, { color: colors.textSecondary }]}>{clockTime(row.start)}</Text>
       <View style={[styles.box, { backgroundColor: `${color}1A`, borderLeftColor: color, borderStyle: suggested ? 'dashed' : 'solid', opacity: task.done ? 0.55 : 1 }]}>
         <View style={styles.meta}>
-          <Text style={{ color, fontWeight: '600', fontSize: 13 }}>{subjects[task.subject].name}</Text>
+          <Text style={{ color, fontWeight: '600', fontSize: 13 }}>{subjectOf(task.subject).name}</Text>
           <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{duration(task.mins)}</Text>
           {suggested ? <Tag label="Suggested" kind="suggested" /> : <SourceTag source={task.source} />}
           <PriorityTag score={task.score} ageMode={ageMode} />

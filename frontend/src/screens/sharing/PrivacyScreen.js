@@ -54,7 +54,7 @@ function ProfileCard({ data }) {
       </View>
       <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }}>{data.name}</Text>
       <Muted>
-        Class {data.cls}, {data.board}
+        Class {data.cls}, {data.boardName ?? data.board}
       </Muted>
       <View style={styles.badges}>
         {['Under-18 profile', 'No ads', 'No public ranking', 'Friends by approval'].map((label, index) => (
@@ -211,6 +211,7 @@ function SavedForLater({ items }) {
 function Account() {
   const navigation = useNavigation();
   const logout = useAuthStore((state) => state.logout);
+  const hasPassword = useAuthStore((state) => state.user?.hasPassword !== false);
   const [confirming, setConfirming] = useState(false);
   const signOut = useAsyncAction(logout);
   const startOver = useAsyncAction(async () => {
@@ -224,7 +225,7 @@ function Account() {
     <Section title="Account" footer="Start over deletes your plan, homework, tests and history but keeps your login. Delete account removes everything, including the login.">
       <View style={{ gap: 10 }}>
         <Button title="Sign out" icon="logout" onPress={signOut.execute} loading={signOut.pending} block />
-        <Button title="Change password" icon="key" onPress={() => navigation.navigate('ChangePassword')} block testID="open-change-password" />
+        {hasPassword ? <Button title="Change password" icon="key" onPress={() => navigation.navigate('ChangePassword')} block testID="open-change-password" /> : null}
         <Button title={confirming ? 'Tap again to delete everything' : 'Start over with setup'} variant="danger" onPress={startOver.execute} loading={startOver.pending} block testID="start-over" />
         <Button title="Delete account" icon="trash" variant="danger" onPress={() => navigation.navigate('DeleteAccount')} block testID="open-delete-account" />
       </View>

@@ -1,10 +1,11 @@
+import { useEffect } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { TimerRing } from '../../components/domain/Charts';
 import { Button } from '../../components/ui/Button';
 import { Chip, ChipGroup, SegmentedControl } from '../../components/ui/Controls';
 import { Section } from '../../components/ui/Layout';
 import { useTimerStore } from '../../store/timerStore';
-import { subjects as subjectInfo } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { countdown } from '../../utils/format';
 
@@ -13,14 +14,20 @@ export function FocusTimer({ subjects }) {
   const { colors } = useTheme();
   const timer = useTimerStore();
   const started = timer.leftSeconds < timer.totalSeconds;
+  const subjectInfo = useSubjectInfo();
   const subject = subjects.includes(timer.subject) ? timer.subject : subjects[0];
-  const color = subjectInfo[subject].color;
+  const color = subjectInfo(subject).color;
+  const { setSubject } = timer;
+  // The timer starts on Maths; students whose board or setup has no Maths log to their first subject.
+  useEffect(() => {
+    if (subject && subject !== timer.subject) setSubject(subject);
+  }, [subject, timer.subject, setSubject]);
 
   return (
     <Section title="Focus" meta="Logged to a subject">
       <ChipGroup label="Subject">
         {subjects.map((id) => (
-          <Chip key={id} label={subjectInfo[id].name} color={subjectInfo[id].color} selected={subject === id} disabled={timer.running} onPress={() => timer.setSubject(id)} />
+          <Chip key={id} label={subjectInfo(id).name} color={subjectInfo(id).color} selected={subject === id} disabled={timer.running} onPress={() => timer.setSubject(id)} />
         ))}
       </ChipGroup>
       <View style={styles.ring}>
@@ -28,7 +35,7 @@ export function FocusTimer({ subjects }) {
           <Text style={[styles.time, { color: colors.text }]} accessibilityRole="timer" accessibilityLabel={`${countdown(timer.leftSeconds)} left`}>
             {countdown(timer.leftSeconds)}
           </Text>
-          <Text style={{ color: colors.textSecondary }}>{subjectInfo[subject].name}</Text>
+          <Text style={{ color: colors.textSecondary }}>{subjectInfo(subject).name}</Text>
         </TimerRing>
       </View>
       <SegmentedControl

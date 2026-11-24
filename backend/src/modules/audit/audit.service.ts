@@ -5,6 +5,8 @@ import type { AuditRepository } from './audit.repository.js';
 export type AuditAction =
   | 'auth.register'
   | 'auth.login'
+  | 'auth.google_login'
+  | 'auth.google_linked'
   | 'auth.login_failed'
   | 'auth.logout'
   | 'auth.refresh_reuse_detected'
@@ -13,7 +15,8 @@ export type AuditAction =
   | 'auth.account_deleted'
   | 'data.wipe'
   | 'data.demo_seeded'
-  | 'admin.role_changed';
+  | 'admin.role_changed'
+  | 'admin.syllabus_changed';
 
 export interface AuditSink {
   record(

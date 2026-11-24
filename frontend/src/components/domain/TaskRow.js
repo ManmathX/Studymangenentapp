@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { duration } from '../../utils/format';
 import { Icon } from '../ui/Icon';
@@ -8,7 +8,8 @@ import { SourceTag, SubjectDot } from './Badges';
 
 function TaskRowBase({ task, time, onToggle, disabled = false }) {
   const { colors } = useTheme();
-  const color = subjects[task.subject].color;
+  const subjectOf = useSubjectInfo();
+  const color = subjectOf(task.subject).color;
   return (
     <View style={styles.row}>
       <Pressable
@@ -27,7 +28,7 @@ function TaskRowBase({ task, time, onToggle, disabled = false }) {
         <Text style={[styles.title, { color: task.done ? colors.textTertiary : colors.text, textDecorationLine: task.done ? 'line-through' : 'none' }]}>{task.title}</Text>
         <View style={styles.meta}>
           <SubjectDot subject={task.subject} />
-          <Text style={[styles.metaText, { color }]}>{subjects[task.subject].name}</Text>
+          <Text style={[styles.metaText, { color }]}>{subjectOf(task.subject).name}</Text>
           <Text style={[styles.metaText, { color: colors.textSecondary }]}>{duration(task.mins)}</Text>
           <SourceTag source={task.source} />
         </View>

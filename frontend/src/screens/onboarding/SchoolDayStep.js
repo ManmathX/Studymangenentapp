@@ -7,10 +7,12 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { profileApi } from '../../services/api/endpoints';
 import { useAuthStore } from '../../store/authStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { setKnownSubjects } from '../../store/subjectStore';
 import { toast } from '../../store/toastStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { deviceTimeZone, minutesToTime, timeToMinutes } from '../../utils/format';
 import { FieldHeading, StepLayout } from './StepLayout';
+import { useDraftSubjects } from './useDraftSubjects';
 
 const WEEKDAYS = [
   { day: 1, label: 'Mon' },
@@ -23,7 +25,7 @@ const WEEKDAYS = [
 
 export function SchoolDayStep() {
   const { colors } = useTheme();
-  const draft = useOnboardingStore((state) => state.draft);
+  const { draft, syllabus, chosen } = useDraftSubjects();
   const update = useOnboardingStore((state) => state.update);
   const toggleTuition = useOnboardingStore((state) => state.toggleTuition);
   const resetDraft = useOnboardingStore((state) => state.reset);
@@ -37,19 +39,27 @@ export function SchoolDayStep() {
       setError('School has to end after it starts.');
       return;
     }
+    if (!syllabus.data) {
+      setError('Your subjects are still loading. Try again in a moment.');
+      return;
+    }
     setError(null);
+    const subjects = chosen.map((subject) => subject.id);
     try {
       const result = await profileApi.onboard({
+        board: draft.board,
         cls: draft.cls,
-        subjects: draft.subjects,
-        taughtChapterKeys: Object.keys(draft.taught).filter((key) => draft.taught[key] && draft.subjects.some((subject) => key.startsWith(`${subject}-`))),
-        exams: draft.exams.filter((exam) => draft.subjects.includes(exam.subject)).map(({ id: _id, ...exam }) => exam),
+        subjects,
+        customSubjects: draft.customSubjects.map(({ id, name, color, chapters }) => ({ id, name, color, chapters })),
+        taughtChapterKeys: Object.keys(draft.taught).filter((key) => draft.taught[key] && subjects.some((subject) => key.startsWith(`${subject}-`))),
+        exams: draft.exams.filter((exam) => subjects.includes(exam.subject)).map(({ id: _id, ...exam }) => exam),
         schoolStart: draft.schoolStart,
         schoolEnd: draft.schoolEnd,
         tuitionDays: draft.tuitionDays,
         dailyLimitMins: draft.dailyLimitMins,
         timezone: deviceTimeZone(),
       });
+      setKnownSubjects(result.profile.subjectInfo);
       resetDraft();
       setOnboarded(true);
       toast(result.suggested ? `Plan ready. ${result.suggested} study blocks suggested before your tests.` : 'Plan ready. Tap "Schedule from syllabus" in Plan to add your first chapter.');

@@ -26,13 +26,21 @@ export class AccountService {
     private readonly audit: AuditSink,
   ) {}
 
-  async deleteAccount(userId: string, password: string, meta: RequestMeta): Promise<void> {
+  /**
+   * Accounts with a password must re-enter it. Google-only accounts have none; for them the
+   * signed-in session plus the app's confirmation step is the check.
+   */
+  async deleteAccount(
+    userId: string,
+    password: string | undefined,
+    meta: RequestMeta,
+  ): Promise<void> {
     const [user, passwordHash] = await Promise.all([
       this.users.findById(userId),
       this.users.findPasswordHash(userId),
     ]);
-    if (!user || !passwordHash) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
-    if (!(await this.passwords.verify(passwordHash, password)))
+    if (!user) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
+    if (passwordHash && !(await this.passwords.verify(passwordHash, password ?? '')))
       throw wrongPasswordError('password');
     if (user.role === 'admin' && (await this.users.countByRole('admin')) <= 1) {
       throw new ConflictError(

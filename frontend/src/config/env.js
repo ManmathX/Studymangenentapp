@@ -20,3 +20,12 @@ export const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 export const REQUEST_TIMEOUT_MS = 15000;
 /** Cached screen data younger than this is shown without refetching on focus. */
 export const STALE_AFTER_MS = 30000;
+
+/**
+ * Google Sign-In. The web client ID (Google Cloud console → Credentials → OAuth client of type
+ * "Web application") is also what the API checks the ID token against, so put the same value
+ * in the backend's GOOGLE_CLIENT_IDS. Empty hides the Google button.
+ */
+export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+/** Only needed for iOS builds. */
+export const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';

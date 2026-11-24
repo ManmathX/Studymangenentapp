@@ -13,6 +13,8 @@ const WHAT_GOES = ['Your login and email address', 'Your plan, tasks, homework a
 export function DeleteAccountScreen() {
   const { colors } = useTheme();
   const deleteAccount = useAuthStore((state) => state.deleteAccount);
+  // Accounts made with Google have no password; the button below is their confirmation.
+  const hasPassword = useAuthStore((state) => state.user?.hasPassword !== false);
   const {
     control,
     handleSubmit,
@@ -22,7 +24,7 @@ export function DeleteAccountScreen() {
 
   const onSubmit = handleSubmit(async ({ password }) => {
     try {
-      await deleteAccount(password);
+      await deleteAccount(hasPassword ? password : undefined);
       toast('Your account and all its data were deleted.');
     } catch (error) {
       if (!applyServerErrors(error, setError, ['password'])) setError('root', { message: error.message });
@@ -42,7 +44,11 @@ export function DeleteAccountScreen() {
           ))}
         </Card>
         <Muted small>Only want a fresh plan? Use “Start over with setup” instead. It keeps your login.</Muted>
-        <FormField control={control} name="password" rules={rules.loginPassword} label="Type your password to confirm" secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={onSubmit} />
+        {hasPassword ? (
+          <FormField control={control} name="password" rules={rules.loginPassword} label="Type your password to confirm" secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={onSubmit} />
+        ) : (
+          <Muted small>You sign in with Google, so there’s no password to type. Tap the button below only if you’re sure.</Muted>
+        )}
         {errors.root ? (
           <Text style={{ color: colors.danger }} accessibilityRole="alert">
             {errors.root.message}

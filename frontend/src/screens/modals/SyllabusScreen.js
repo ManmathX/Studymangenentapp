@@ -7,7 +7,8 @@ import { Card, Divider, Muted, Screen } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useResource } from '../../hooks/useResource';
 import { resources } from '../../services/resources';
-import { chapterStatus, subjects as subjectInfo } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
+import { chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
 
 export function SyllabusScreen({ navigation }) {
@@ -22,11 +23,12 @@ export function SyllabusScreen({ navigation }) {
 function SyllabusBody({ profile, navigation }) {
   const [subject, setSubject] = useState(profile.subjects[0]);
   const chapters = useResource(resources.chapters(subject));
+  const subjectOf = useSubjectInfo();
   return (
     <>
       <ChipGroup label="Subject">
         {profile.subjects.map((id) => (
-          <Chip key={id} label={subjectInfo[id].name} color={subjectInfo[id].color} selected={subject === id} onPress={() => setSubject(id)} />
+          <Chip key={id} label={subjectOf(id).name} color={subjectOf(id).color} selected={subject === id} onPress={() => setSubject(id)} />
         ))}
       </ChipGroup>
       <AsyncBoundary resource={chapters}>
@@ -42,7 +44,7 @@ function SyllabusBody({ profile, navigation }) {
         )}
       </AsyncBoundary>
       <Muted small>
-        Class {profile.cls} {profile.board}, NCERT books. Pick a chapter to schedule it.
+        Class {profile.cls} {profile.boardName ?? profile.board}. Pick a chapter to schedule it.
       </Muted>
     </>
   );

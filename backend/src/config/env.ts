@@ -30,6 +30,20 @@ const envSchema = z.object({
         .filter(Boolean),
     ),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+  /**
+   * OAuth client IDs whose Google ID tokens are accepted (comma-separated). Use the *web*
+   * client ID the app passes to GoogleSignin.configure(); add the iOS client ID if iOS signs
+   * in with its own. Empty turns Google sign-in off.
+   */
+  GOOGLE_CLIENT_IDS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
   RATE_LIMIT_ENABLED: booleanFromString.default(true),
   RATE_LIMIT_GLOBAL_PER_MINUTE: z.coerce.number().int().min(10).max(100_000).default(300),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().min(1).max(10_000).default(20),

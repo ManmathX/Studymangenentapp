@@ -1,5 +1,6 @@
 import {
   AppError,
+  BadRequestError,
   ConflictError,
   NotFoundError,
   UnauthorizedError,
@@ -10,6 +11,7 @@ import type { AuditSink } from '../audit/audit.service.js';
 import type { ProfileRepository } from '../profile/profile.repository.js';
 import type { UserRecord, UserRepository } from '../users/user.repository.js';
 import type { LoginBody, RegisterBody } from './auth.schemas.js';
+import type { GoogleIdTokenVerifier } from './google.service.js';
 import type { PasswordHasher } from './password.service.js';
 import type { RefreshTokenRepository } from './refresh-token.repository.js';
 import type { TokenService } from './token.service.js';
@@ -51,6 +53,8 @@ export class AuthService {
     private readonly audit: AuditSink,
     private readonly clock: Clock,
     private readonly settings: AuthSettings,
+    /** Null when GOOGLE_CLIENT_IDS is not configured. */
+    private readonly google: GoogleIdTokenVerifier | null = null,
   ) {}
 
   async register(input: RegisterBody, meta: RequestMeta): Promise<Session> {
@@ -71,7 +75,8 @@ export class AuthService {
 
   async login(input: LoginBody, meta: RequestMeta): Promise<Session> {
     const credentials = await this.users.findCredentialsByEmail(input.email);
-    const valid = credentials
+    // Accounts made with Google have no password; check a dummy hash so timing stays the same.
+    const valid = credentials?.passwordHash
       ? await this.passwords.verify(credentials.passwordHash, input.password)
       : await this.passwords.verifyAgainstDummy(input.password);
     if (!credentials || !valid) {
@@ -86,6 +91,48 @@ export class AuthService {
     const user = { ...credentials.user, lastLoginAt: now.toISOString() };
     const tokens = await this.issueTokens(user, this.tokens.newFamilyId(), meta);
     return { user, tokens, onboarded: Boolean(await this.profiles.findByUser(user.id)) };
+  }
+
+  /**
+   * Signs in with a Google ID token from the app. The Google account is matched by its id,
+   * then by verified email (linking it to an existing email-and-password login); otherwise a
+   * new student account is created.
+   */
+  async googleLogin(idToken: string, meta: RequestMeta): Promise<Session> {
+    if (!this.google)
+      throw new AppError(503, 'GOOGLE_NOT_CONFIGURED', 'Google sign-in is not set up yet');
+    const identity = await this.google.verify(idToken);
+    let user = await this.users.findByGoogleId(identity.googleId);
+    let created = false;
+    if (!user) {
+      if (!identity.emailVerified)
+        throw new UnauthorizedError(
+          'Verify your Google account email first',
+          'GOOGLE_EMAIL_UNVERIFIED',
+        );
+      const existing = await this.users.findCredentialsByEmail(identity.email);
+      if (existing) {
+        await this.users.linkGoogle(existing.user.id, identity.googleId);
+        await this.audit.record('auth.google_linked', existing.user.id, meta);
+        user = existing.user;
+      } else {
+        user = await this.users.create({
+          email: identity.email,
+          name: (identity.name ?? identity.email.split('@')[0] ?? 'Student').slice(0, 60),
+          role: 'student',
+          googleId: identity.googleId,
+        });
+        created = true;
+        await this.audit.record('auth.register', user.id, meta, { provider: 'google' });
+      }
+    }
+    const now = this.clock.now();
+    await this.users.recordLogin(user.id, now);
+    await this.audit.record('auth.google_login', user.id, meta);
+    const signedIn = { ...user, lastLoginAt: now.toISOString() };
+    const tokens = await this.issueTokens(signedIn, this.tokens.newFamilyId(), meta);
+    const onboarded = created ? false : Boolean(await this.profiles.findByUser(user.id));
+    return { user: signedIn, tokens, onboarded };
   }
 
   /**
@@ -147,7 +194,12 @@ export class AuthService {
       this.users.findById(userId),
       this.users.findPasswordHash(userId),
     ]);
-    if (!user || !currentHash) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
+    if (!user) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
+    if (!currentHash)
+      throw new BadRequestError(
+        'This account signs in with Google, so it has no password to change',
+        'NO_PASSWORD',
+      );
     if (!(await this.passwords.verify(currentHash, input.currentPassword))) {
       await this.audit.record('auth.password_change_failed', userId, meta);
       throw wrongPasswordError('currentPassword');

@@ -2,13 +2,14 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SubjectDot } from '../../components/domain/Badges';
 import { Icon } from '../../components/ui/Icon';
-import { subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { dayName, duration } from '../../utils/format';
 
 function HomeworkRowBase({ item, today, onToggle, onDelete, disabled }) {
   const { colors } = useTheme();
-  const color = subjects[item.subject].color;
+  const subjectOf = useSubjectInfo();
+  const color = subjectOf(item.subject).color;
   return (
     <View style={[styles.row, { backgroundColor: colors.card }]}>
       <Pressable
@@ -26,7 +27,7 @@ function HomeworkRowBase({ item, today, onToggle, onDelete, disabled }) {
         <Text style={[styles.title, { color: item.done ? colors.textTertiary : colors.text, textDecorationLine: item.done ? 'line-through' : 'none' }]}>{item.title}</Text>
         <View style={styles.meta}>
           <SubjectDot subject={item.subject} />
-          <Text style={{ color, fontSize: 13, fontWeight: '500' }}>{subjects[item.subject].name}</Text>
+          <Text style={{ color, fontSize: 13, fontWeight: '500' }}>{subjectOf(item.subject).name}</Text>
           <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Due {dayName(item.due, today)}</Text>
           <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{duration(item.mins)}</Text>
         </View>

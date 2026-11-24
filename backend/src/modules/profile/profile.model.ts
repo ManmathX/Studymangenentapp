@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 import { AGE_MODES, type AgeMode } from '../planner/planner.types.js';
 
 export const SHARE_ITEMS = ['hours', 'streak', 'coverage', 'tests', 'marks'] as const;
@@ -11,13 +11,26 @@ export interface SharingSettings {
   groups: boolean;
 }
 
+/** Name and colour of one of the student's subjects, copied at setup so catalogue edits can't break it. */
+export interface ProfileSubject {
+  id: SubjectId;
+  name: string;
+  color: string;
+  /** Added by the student rather than taken from the board's catalogue. */
+  custom: boolean;
+}
+
 export interface ProfileDocument {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   cls: number;
-  board: 'CBSE';
+  /** Board code (`cbse`, `icse`, …). Profiles made before boards were configurable say `CBSE`. */
+  board: string;
+  boardName?: string;
   timezone: string;
   subjects: SubjectId[];
+  /** Missing on profiles made before the syllabus catalogue; those only use built-in subjects. */
+  subjectInfo?: ProfileSubject[];
   schoolStart: number;
   schoolEnd: number;
   tuitionDays: number[];
@@ -37,9 +50,22 @@ const profileSchema = new Schema<ProfileDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     cls: { type: Number, required: true, min: 6, max: 12 },
-    board: { type: String, enum: ['CBSE'], default: 'CBSE' },
+    board: { type: String, default: 'cbse', maxlength: 32 },
+    boardName: { type: String, maxlength: 60 },
     timezone: { type: String, required: true },
-    subjects: { type: [String], enum: SUBJECT_IDS, required: true },
+    subjects: { type: [{ type: String, match: SUBJECT_ID_PATTERN }], required: true },
+    subjectInfo: {
+      type: [
+        {
+          _id: false,
+          id: { type: String, match: SUBJECT_ID_PATTERN, required: true },
+          name: { type: String, required: true, maxlength: 60 },
+          color: { type: String, match: /^#[0-9A-Fa-f]{6}$/, required: true },
+          custom: { type: Boolean, default: false },
+        },
+      ],
+      default: undefined,
+    },
     schoolStart: { type: Number, required: true, min: 0, max: 1439 },
     schoolEnd: { type: Number, required: true, min: 0, max: 1439 },
     tuitionDays: { type: [Number], default: [] },

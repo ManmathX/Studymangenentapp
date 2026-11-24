@@ -73,6 +73,7 @@ export const chapterActions = {
 
 export const examActions = {
   create: (body) => run(() => examsApi.create(body), { success: `${body.name} added. Tap "Fill free slots before exams" to plan revision.` }),
+  update: (id, changes) => run(() => examsApi.update(id, changes), { success: (exam) => `${exam.name} saved.` }),
   async remove(exam) {
     const confirmed = await confirmAction({
       title: `Remove ${exam.name}?`,

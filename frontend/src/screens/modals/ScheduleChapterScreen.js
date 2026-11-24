@@ -9,7 +9,8 @@ import { AsyncBoundary } from '../../components/ui/States';
 import { useResource } from '../../hooks/useResource';
 import { chapterActions } from '../../services/actions';
 import { resources } from '../../services/resources';
-import { CHAPTER_STATUS_ORDER, chapterStatus, subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
+import { CHAPTER_STATUS_ORDER, chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
 import { capitalize, dayName, duration, shortDate } from '../../utils/format';
 
@@ -42,6 +43,7 @@ function ScheduleForm({ data, today, navigation }) {
     reset({ steps: data.steps.map((step) => ({ include: true, date: step.proposedDate })) });
   }, [data.steps, reset]);
 
+  const subjectOf = useSubjectInfo();
   const onSubmit = handleSubmit(async (values) => {
     const selections = values.steps.flatMap((step, index) => (step.include ? [{ index, date: step.date }] : []));
     if (!selections.length) {
@@ -55,7 +57,7 @@ function ScheduleForm({ data, today, navigation }) {
   return (
     <>
       <Card>
-        <Text style={{ color: subjects[chapter.subject].color, fontWeight: '700' }}>{subjects[chapter.subject].name}</Text>
+        <Text style={{ color: subjectOf(chapter.subject).color, fontWeight: '700' }}>{subjectOf(chapter.subject).name}</Text>
         <Text style={[styles.title, { color: colors.text }]}>{chapter.name}</Text>
         <Muted small>
           {exam ? `In ${exam.name} on ${shortDate(exam.date)}. Steps are placed before then.` : 'No test includes this chapter yet, so steps are spread over the next two weeks.'}

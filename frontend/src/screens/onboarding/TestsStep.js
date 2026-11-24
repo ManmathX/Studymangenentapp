@@ -8,15 +8,13 @@ import { CheckRow, Chip, ChipGroup } from '../../components/ui/Controls';
 import { FormField } from '../../components/ui/Field';
 import { Card, Divider } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
-import { useResource } from '../../hooks/useResource';
-import { resources } from '../../services/resources';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { toast } from '../../store/toastStore';
-import { subjects as subjectInfo } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
 import { addDays, localTodayKey, plural, shortDate } from '../../utils/format';
 import { rules } from '../../utils/validation';
 import { FieldHeading, StepLayout } from './StepLayout';
+import { useDraftSubjects } from './useDraftSubjects';
 
 /** Local ids for tests drafted during setup; the server assigns real ids on "Build my plan". */
 let draftSequence = 0;
@@ -25,34 +23,60 @@ const nextDraftId = () => {
   return `draft-${draftSequence}`;
 };
 
+const DEFAULT_DAYS_AHEAD = 10;
+
 export function TestsStep({ navigation }) {
   const { colors } = useTheme();
-  const draft = useOnboardingStore((state) => state.draft);
+  const { draft, syllabus, chosen } = useDraftSubjects();
   const addExam = useOnboardingStore((state) => state.addExam);
+  const updateExam = useOnboardingStore((state) => state.updateExam);
   const removeExam = useOnboardingStore((state) => state.removeExam);
-  const syllabus = useResource(resources.syllabus(draft.cls ?? 9), { enabled: Boolean(draft.cls) });
   const today = localTodayKey();
   const days = useMemo(() => Array.from({ length: 60 }, (_, index) => addDays(today, index + 1)), [today]);
-  const [subject, setSubject] = useState(draft.subjects[0]);
-  const [date, setDate] = useState(addDays(today, 10));
+  const [picked, setPicked] = useState(null);
+  const [date, setDate] = useState(addDays(today, DEFAULT_DAYS_AHEAD));
   const [chapterKeys, setChapterKeys] = useState([]);
   const [chapterError, setChapterError] = useState(null);
+  // Id of the draft test loaded into the form for editing, or null when adding a new one.
+  const [editingId, setEditingId] = useState(null);
   const { control, handleSubmit, reset } = useForm({ defaultValues: { name: '' } });
+  const current = chosen.find((item) => item.id === picked) ?? chosen[0];
+  const subjectById = (id) => chosen.find((item) => item.id === id);
+  const exams = draft.exams.filter((exam) => subjectById(exam.subject));
 
   const toggleChapter = (key) => {
     setChapterError(null);
-    setChapterKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+    setChapterKeys((keys) => (keys.includes(key) ? keys.filter((item) => item !== key) : [...keys, key]));
   };
 
-  const onAdd = handleSubmit(({ name }) => {
+  const clearForm = () => {
+    reset({ name: '' });
+    setChapterKeys([]);
+    setChapterError(null);
+    setEditingId(null);
+    setDate(addDays(today, DEFAULT_DAYS_AHEAD));
+  };
+
+  const startEditing = (exam) => {
+    setEditingId(exam.id);
+    setPicked(exam.subject);
+    setDate(exam.date);
+    setChapterKeys(exam.chapterKeys);
+    setChapterError(null);
+    reset({ name: exam.name });
+  };
+
+  const onSave = handleSubmit(({ name }) => {
+    if (!current) return;
     if (!chapterKeys.length) {
       setChapterError('Tick at least one chapter in this test.');
       return;
     }
-    addExam({ id: nextDraftId(), subject, name: name.trim(), date, weight: 20, chapterKeys });
-    reset({ name: '' });
-    setChapterKeys([]);
-    toast(`${name.trim()} added.`);
+    const exam = { id: editingId ?? nextDraftId(), subject: current.id, name: name.trim(), date, weight: 20, chapterKeys };
+    if (editingId) updateExam(exam);
+    else addExam(exam);
+    toast(editingId ? `${exam.name} saved.` : `${exam.name} added.`);
+    clearForm();
   });
 
   return (
@@ -60,38 +84,48 @@ export function TestsStep({ navigation }) {
       step={4}
       title="Upcoming tests"
       lead="Add the tests you know about. The planner works backwards from these dates."
-      footer={<Button title={draft.exams.length ? 'Continue' : 'Skip for now'} variant="primary" block onPress={() => navigation.navigate('SchoolDayStep')} testID="tests-continue" />}
+      footer={<Button title={exams.length ? 'Continue' : 'Skip for now'} variant="primary" block disabled={editingId !== null} onPress={() => navigation.navigate('SchoolDayStep')} testID="tests-continue" />}
     >
-      {draft.exams.length ? (
+      {exams.length ? (
         <Card flush>
-          {draft.exams.map((exam, index) => (
+          {exams.map((exam, index) => (
             <View key={exam.id}>
               {index ? <Divider /> : null}
-              <View style={styles.examRow}>
-                <SubjectDot subject={exam.subject} size={10} />
+              <View style={[styles.examRow, editingId === exam.id && { backgroundColor: colors.fill }]}>
+                <SubjectDot subject={exam.subject} size={10} color={subjectById(exam.subject)?.color} />
                 <View style={styles.flex}>
                   <Text style={{ color: colors.text, fontSize: 16 }}>{exam.name}</Text>
                   <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
-                    {shortDate(exam.date)}, {plural(exam.chapterKeys.length, 'chapter')}
+                    {subjectById(exam.subject)?.name}, {shortDate(exam.date)}, {plural(exam.chapterKeys.length, 'chapter')}
                   </Text>
                 </View>
-                <Button title="Remove" size="sm" variant="danger" onPress={() => removeExam(exam.id)} />
+                <Button title="Edit" size="sm" icon="pencil" onPress={() => startEditing(exam)} disabled={editingId === exam.id} testID={`edit-draft-exam-${exam.id}`} />
+                <Button
+                  title="Remove"
+                  size="sm"
+                  variant="danger"
+                  onPress={() => {
+                    if (editingId === exam.id) clearForm();
+                    removeExam(exam.id);
+                  }}
+                />
               </View>
             </View>
           ))}
         </Card>
       ) : null}
 
-      <FieldHeading>Add a test</FieldHeading>
+      <FieldHeading>{editingId ? 'Edit test' : 'Add a test'}</FieldHeading>
       <ChipGroup label="Subject">
-        {draft.subjects.map((id) => (
+        {chosen.map((item) => (
           <Chip
-            key={id}
-            label={subjectInfo[id].name}
-            color={subjectInfo[id].color}
-            selected={subject === id}
+            key={item.id}
+            label={item.name}
+            color={item.color}
+            selected={current?.id === item.id}
             onPress={() => {
-              setSubject(id);
+              if (item.id === current?.id) return;
+              setPicked(item.id);
               setChapterKeys([]);
             }}
           />
@@ -102,9 +136,9 @@ export function TestsStep({ navigation }) {
       <DayPicker days={days} value={date} onChange={setDate} today={today} />
       <FieldHeading>Chapters in this test</FieldHeading>
       <AsyncBoundary resource={syllabus}>
-        {(catalog) => (
+        {() => (
           <Card flush>
-            {(catalog.find((item) => item.id === subject)?.chapters ?? []).map((chapter, index) => (
+            {(current?.chapters ?? []).map((chapter, index) => (
               <View key={chapter.key}>
                 {index ? <Divider /> : null}
                 <CheckRow label={chapter.name} checked={chapterKeys.includes(chapter.key)} onToggle={() => toggleChapter(chapter.key)} />
@@ -114,12 +148,22 @@ export function TestsStep({ navigation }) {
         )}
       </AsyncBoundary>
       {chapterError ? <Text style={{ color: colors.danger }}>{chapterError}</Text> : null}
-      <Button title="Add this test" icon="plus" onPress={onAdd} testID="tests-add" />
+      {editingId ? (
+        <View style={styles.buttons}>
+          <View style={styles.flex}>
+            <Button title="Save changes" icon="check" variant="primary" block onPress={onSave} testID="tests-save" />
+          </View>
+          <Button title="Cancel" variant="ghost" onPress={clearForm} />
+        </View>
+      ) : (
+        <Button title="Add this test" icon="plus" onPress={onSave} testID="tests-add" />
+      )}
     </StepLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  examRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  examRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
   flex: { flex: 1 },
+  buttons: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

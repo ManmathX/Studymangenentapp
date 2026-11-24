@@ -12,6 +12,10 @@ import { AuditService } from './modules/audit/audit.service.js';
 import { AccountService } from './modules/auth/account.service.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { AuthService } from './modules/auth/auth.service.js';
+import {
+  GoogleAuthLibraryVerifier,
+  type GoogleIdTokenVerifier,
+} from './modules/auth/google.service.js';
 import { Argon2PasswordHasher, type PasswordHasher } from './modules/auth/password.service.js';
 import { MongoRefreshTokenRepository } from './modules/auth/refresh-token.repository.js';
 import { TokenService } from './modules/auth/token.service.js';
@@ -41,6 +45,9 @@ import { ProfileService } from './modules/profile/profile.service.js';
 import { suggestionRoutes } from './modules/suggestions/suggestion.routes.js';
 import { MongoSuggestionRepository } from './modules/suggestions/suggestion.repository.js';
 import { SuggestionService } from './modules/suggestions/suggestion.service.js';
+import { catalogAdminRoutes } from './modules/syllabus/catalog-admin.routes.js';
+import { MongoCatalogRepository } from './modules/syllabus/catalog.repository.js';
+import { CatalogService } from './modules/syllabus/catalog.service.js';
 import { syllabusRoutes } from './modules/syllabus/syllabus.routes.js';
 import { taskRoutes } from './modules/tasks/task.routes.js';
 import { MongoTaskRepository } from './modules/tasks/task.repository.js';
@@ -53,6 +60,8 @@ export interface ContainerOptions {
   redis?: Redis;
   clock?: Clock;
   passwordHasher?: PasswordHasher;
+  /** Overrides Google ID token checks (tests). Defaults to google-auth-library when configured. */
+  googleVerifier?: GoogleIdTokenVerifier | null;
   startedAt?: Date;
   /** Reports whether a graceful shutdown has begun (readiness then fails). */
   isShuttingDown?: () => boolean;
@@ -89,11 +98,28 @@ export function buildContainer(options: ContainerOptions): Container {
     accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
   });
   const passwords = options.passwordHasher ?? new Argon2PasswordHasher();
-  const auth = new AuthService(users, refreshTokens, profiles, passwords, tokens, audit, clock, {
-    accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
-    refreshTtlDays: config.REFRESH_TOKEN_TTL_DAYS,
-    reuseGraceSeconds: config.REFRESH_REUSE_GRACE_SECONDS,
-  });
+  const google =
+    options.googleVerifier !== undefined
+      ? options.googleVerifier
+      : config.GOOGLE_CLIENT_IDS.length
+        ? new GoogleAuthLibraryVerifier(config.GOOGLE_CLIENT_IDS)
+        : null;
+  const auth = new AuthService(
+    users,
+    refreshTokens,
+    profiles,
+    passwords,
+    tokens,
+    audit,
+    clock,
+    {
+      accessTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
+      refreshTtlDays: config.REFRESH_TOKEN_TTL_DAYS,
+      reuseGraceSeconds: config.REFRESH_REUSE_GRACE_SECONDS,
+    },
+    google,
+  );
+  const catalog = new CatalogService(new MongoCatalogRepository());
 
   const context = new StudentContext(profiles, clock);
   const scheduling = new SchedulingService(tasks, homework, exams, chapters);
@@ -111,6 +137,7 @@ export function buildContainer(options: ContainerOptions): Container {
     habits,
     scheduling,
     audit,
+    catalog,
   );
   const accounts = new AccountService(
     users,
@@ -152,7 +179,7 @@ export function buildContainer(options: ContainerOptions): Container {
   const routes: Route[] = [
     ...healthRoutes(redis, options.startedAt ?? new Date(), options.isShuttingDown),
     ...authRoutes(auth, accounts, rateLimiters.auth),
-    ...syllabusRoutes(),
+    ...syllabusRoutes(catalog),
     ...profileRoutes(profileService, onboarding),
     ...dashboardRoutes(dashboard),
     ...planRoutes(plan),
@@ -163,6 +190,7 @@ export function buildContainer(options: ContainerOptions): Container {
     ...homeworkRoutes(homeworkService),
     ...habitsRoutes(habitsService),
     ...adminRoutes(users, auditLogs, audit),
+    ...catalogAdminRoutes(catalog, audit),
   ];
 
   return { routes, rateLimiters, authenticate: createAuthenticate(tokens) };

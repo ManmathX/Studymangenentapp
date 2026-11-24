@@ -1,4 +1,12 @@
+import { setKnownSubjects } from '../store/subjectStore';
 import { chaptersApi, dashboardApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, syllabusApi } from './api/endpoints';
+
+/** The profile also tells every screen the names and colours of the student's subjects. */
+const loadProfile = () =>
+  profileApi.get().then((profile) => {
+    setKnownSubjects(profile.subjectInfo);
+    return profile;
+  });
 
 /** Cache keys and loaders for each piece of screen data. */
 export const resources = {
@@ -6,7 +14,7 @@ export const resources = {
   progress: { key: 'progress', load: dashboardApi.progress },
   habits: { key: 'habits', load: dashboardApi.habits },
   sharing: { key: 'sharing', load: dashboardApi.sharing },
-  profile: { key: 'profile', load: profileApi.get },
+  profile: { key: 'profile', load: loadProfile },
   planStrip: { key: 'planStrip', load: () => planApi.strip(14) },
   planDay: (date) => ({ key: `planDay:${date}`, load: () => planApi.day(date) }),
   exams: { key: 'exams', load: examsApi.upcoming },
@@ -15,6 +23,7 @@ export const resources = {
   bag: { key: 'bag', load: () => habitsApi.bag() },
   chapters: (subject) => ({ key: `chapters:${subject}`, load: () => chaptersApi.list(subject) }),
   proposal: (chapterKey) => ({ key: `proposal:${chapterKey}`, load: () => chaptersApi.proposal(chapterKey) }),
-  syllabusClasses: { key: 'syllabusClasses', load: syllabusApi.classes },
-  syllabus: (cls) => ({ key: `syllabus:${cls}`, load: () => syllabusApi.forClass(cls) }),
+  syllabusBoards: { key: 'syllabusBoards', load: syllabusApi.boards },
+  syllabusClasses: (board) => ({ key: `syllabusClasses:${board}`, load: () => syllabusApi.classes(board) }),
+  syllabus: (board, cls) => ({ key: `syllabus:${board}:${cls}`, load: () => syllabusApi.forClass(board, cls) }),
 };

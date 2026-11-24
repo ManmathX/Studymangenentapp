@@ -9,8 +9,18 @@ export interface UserRecord {
   email: string;
   name: string;
   role: Role;
+  /** False when the account only signs in with Google. */
+  hasPassword: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+}
+
+export interface NewUser {
+  email: string;
+  name: string;
+  role: Role;
+  passwordHash?: string;
+  googleId?: string;
 }
 
 export interface UserListQuery extends PaginationQuery {
@@ -19,14 +29,15 @@ export interface UserListQuery extends PaginationQuery {
 }
 
 export interface UserRepository {
-  create(input: {
-    email: string;
-    name: string;
-    passwordHash: string;
-    role: Role;
-  }): Promise<UserRecord>;
+  create(input: NewUser): Promise<UserRecord>;
   findById(id: string): Promise<UserRecord | null>;
-  findCredentialsByEmail(email: string): Promise<{ user: UserRecord; passwordHash: string } | null>;
+  findByGoogleId(googleId: string): Promise<UserRecord | null>;
+  /** Connects a Google account to an existing login so either can be used. */
+  linkGoogle(id: string, googleId: string): Promise<void>;
+  /** `passwordHash` is null for accounts that only sign in with Google. */
+  findCredentialsByEmail(
+    email: string,
+  ): Promise<{ user: UserRecord; passwordHash: string | null } | null>;
   findPasswordHash(id: string): Promise<string | null>;
   recordLogin(id: string, at: Date): Promise<void>;
   updatePasswordHash(id: string, passwordHash: string): Promise<void>;
@@ -44,22 +55,34 @@ function toRecord(doc: UserLean): UserRecord {
     email: doc.email,
     name: doc.name,
     role: doc.role,
+    hasPassword: doc.hasPassword !== false,
     createdAt: doc.createdAt.toISOString(),
     lastLoginAt: doc.lastLoginAt ? doc.lastLoginAt.toISOString() : null,
   };
 }
 
-const PUBLIC_FIELDS = { email: 1, name: 1, role: 1, createdAt: 1, lastLoginAt: 1 } as const;
+const PUBLIC_FIELDS = {
+  email: 1,
+  name: 1,
+  role: 1,
+  hasPassword: 1,
+  createdAt: 1,
+  lastLoginAt: 1,
+} as const;
 
 export class MongoUserRepository implements UserRepository {
-  async create(input: {
-    email: string;
-    name: string;
-    passwordHash: string;
-    role: Role;
-  }): Promise<UserRecord> {
-    const doc = await UserModel.create(input);
+  async create(input: NewUser): Promise<UserRecord> {
+    const doc = await UserModel.create({ ...input, hasPassword: Boolean(input.passwordHash) });
     return toRecord(doc.toObject());
+  }
+
+  async findByGoogleId(googleId: string): Promise<UserRecord | null> {
+    const doc = await UserModel.findOne({ googleId }, PUBLIC_FIELDS).lean<UserLean>();
+    return doc ? toRecord(doc) : null;
+  }
+
+  async linkGoogle(id: string, googleId: string): Promise<void> {
+    await UserModel.updateOne({ _id: toObjectId(id) }, { $set: { googleId } });
   }
 
   async findById(id: string): Promise<UserRecord | null> {
@@ -69,17 +92,17 @@ export class MongoUserRepository implements UserRepository {
 
   async findCredentialsByEmail(
     email: string,
-  ): Promise<{ user: UserRecord; passwordHash: string } | null> {
+  ): Promise<{ user: UserRecord; passwordHash: string | null } | null> {
     const doc = await UserModel.findOne({ email: email.toLowerCase() })
       .select('+passwordHash')
-      .lean<UserLean & { passwordHash: string }>();
-    return doc ? { user: toRecord(doc), passwordHash: doc.passwordHash } : null;
+      .lean<UserLean>();
+    return doc ? { user: toRecord(doc), passwordHash: doc.passwordHash ?? null } : null;
   }
 
   async findPasswordHash(id: string): Promise<string | null> {
     const doc = await UserModel.findById(toObjectId(id), { passwordHash: 1 })
       .select('+passwordHash')
-      .lean<{ passwordHash: string }>();
+      .lean<{ passwordHash?: string }>();
     return doc?.passwordHash ?? null;
   }
 
@@ -88,7 +111,10 @@ export class MongoUserRepository implements UserRepository {
   }
 
   async updatePasswordHash(id: string, passwordHash: string): Promise<void> {
-    await UserModel.updateOne({ _id: toObjectId(id) }, { $set: { passwordHash } });
+    await UserModel.updateOne(
+      { _id: toObjectId(id) },
+      { $set: { passwordHash, hasPassword: true } },
+    );
   }
 
   async countByRole(role: Role): Promise<number> {

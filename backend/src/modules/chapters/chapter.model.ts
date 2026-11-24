@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 import { CHAPTER_STATUSES, type ChapterStatus } from '../planner/planner.types.js';
 
 export interface ChapterDocument {
@@ -20,7 +20,7 @@ const chapterSchema = new Schema<ChapterDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     key: { type: String, required: true },
-    subject: { type: String, enum: SUBJECT_IDS, required: true },
+    subject: { type: String, match: SUBJECT_ID_PATTERN, required: true },
     name: { type: String, required: true },
     difficulty: { type: Number, min: 1, max: 3, required: true },
     status: { type: String, enum: CHAPTER_STATUSES, default: 'not' },

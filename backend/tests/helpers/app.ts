@@ -6,7 +6,7 @@ import { createApp } from '../../src/app.js';
 import { FixedClock } from '../../src/common/utils/clock.js';
 import { loadConfig, type AppConfig } from '../../src/config/env.js';
 import { createLogger } from '../../src/config/logger.js';
-import { buildContainer } from '../../src/container.js';
+import { buildContainer, type ContainerOptions } from '../../src/container.js';
 import { connectMongo, disconnectMongo } from '../../src/database/mongoose.js';
 import type { PasswordHasher } from '../../src/modules/auth/password.service.js';
 
@@ -48,7 +48,11 @@ function uriWithDatabase(uri: string, database: string): string {
  * Gives a test file its own database, a fresh app per file, and empty collections
  * before every test. Call once at the top level of a test file.
  */
-export function useTestApp(name: string, configOverrides: Record<string, string> = {}): TestApp {
+export function useTestApp(
+  name: string,
+  configOverrides: Record<string, string> = {},
+  containerOverrides: Partial<Pick<ContainerOptions, 'googleVerifier'>> = {},
+): TestApp {
   const holder = {} as TestApp;
   const config = testConfig(configOverrides);
   const logger = createLogger(config);
@@ -68,7 +72,13 @@ export function useTestApp(name: string, configOverrides: Record<string, string>
     holder.app = createApp(
       config,
       logger,
-      buildContainer({ config, logger, clock: holder.clock, passwordHasher: fastHasher }),
+      buildContainer({
+        config,
+        logger,
+        clock: holder.clock,
+        passwordHasher: fastHasher,
+        ...containerOverrides,
+      }),
     );
   });
 

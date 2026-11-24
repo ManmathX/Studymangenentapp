@@ -1,14 +1,22 @@
 import type { TxHandle } from '../../database/transaction.js';
 import { toObjectId } from '../../database/ids.js';
-import type { SubjectId } from '../syllabus/syllabus.data.js';
+import { isBuiltInSubject, SUBJECTS, type SubjectId } from '../syllabus/syllabus.data.js';
 import type { AgeMode, PlannerProfile } from '../planner/planner.types.js';
-import { ProfileModel, type ProfileDocument, type SharingSettings } from './profile.model.js';
+import {
+  ProfileModel,
+  type ProfileDocument,
+  type ProfileSubject,
+  type SharingSettings,
+} from './profile.model.js';
 
 export interface ProfileRecord extends PlannerProfile {
   cls: number;
-  board: 'CBSE';
+  board: string;
+  boardName: string;
   timezone: string;
   subjects: SubjectId[];
+  /** Name and colour for each id in `subjects`, in the same order. */
+  subjectInfo: ProfileSubject[];
   weeklyGoalMins: number;
   sharing: SharingSettings;
   trackingStart: string;
@@ -31,12 +39,25 @@ export interface ProfileRepository {
   deleteByUser(userId: string, tx: TxHandle): Promise<void>;
 }
 
+/** Older profiles have no subject snapshot: they only ever held the five built-in CBSE subjects. */
+function subjectInfoOf(doc: ProfileDocument): ProfileSubject[] {
+  const stored = new Map((doc.subjectInfo ?? []).map((info) => [info.id, info]));
+  return doc.subjects.map((id) => {
+    const info = stored.get(id);
+    if (info) return { id, name: info.name, color: info.color, custom: Boolean(info.custom) };
+    if (isBuiltInSubject(id)) return { ...SUBJECTS[id], custom: false };
+    return { id, name: 'Other subject', color: '#8E8E93', custom: false };
+  });
+}
+
 function toRecord(doc: ProfileDocument): ProfileRecord {
   return {
     cls: doc.cls,
-    board: doc.board,
+    board: doc.board.toLowerCase(),
+    boardName: doc.boardName ?? doc.board.toUpperCase(),
     timezone: doc.timezone,
     subjects: doc.subjects,
+    subjectInfo: subjectInfoOf(doc),
     schoolStart: doc.schoolStart,
     schoolEnd: doc.schoolEnd,
     tuitionDays: doc.tuitionDays,

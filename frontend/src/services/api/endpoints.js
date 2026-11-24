@@ -3,16 +3,18 @@ import { api } from './client';
 /** Every backend endpoint the app uses, grouped by feature. Screens never build URLs themselves. */
 export const authApi = {
   login: (body) => api.post('/auth/login', body),
+  google: (idToken) => api.post('/auth/google', { idToken }),
   register: (body) => api.post('/auth/register', body),
   logout: (refreshToken) => api.post('/auth/logout', { refreshToken }),
   me: () => api.get('/auth/me'),
   changePassword: (currentPassword, newPassword) => api.post('/auth/password', { currentPassword, newPassword }),
-  deleteAccount: (password) => api.delete('/auth/account', { password }),
+  deleteAccount: (password) => api.delete('/auth/account', password ? { password } : {}),
 };
 
 export const syllabusApi = {
-  classes: () => api.get('/syllabus/classes'),
-  forClass: (cls) => api.get(`/syllabus/${cls}`),
+  boards: () => api.get('/syllabus/boards'),
+  classes: (board) => api.get('/syllabus/classes', { board }),
+  forClass: (board, cls) => api.get(`/syllabus/${cls}`, { board }),
 };
 
 export const profileApi = {
@@ -64,6 +66,7 @@ export const suggestionsApi = {
 export const examsApi = {
   upcoming: () => api.get('/exams'),
   create: (body) => api.post('/exams', body),
+  update: (id, patch) => api.patch(`/exams/${id}`, patch),
   remove: (id) => api.delete(`/exams/${id}`),
 };
 

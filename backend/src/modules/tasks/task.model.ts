@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 import {
   TASK_KINDS,
   TASK_SOURCES,
@@ -32,7 +32,7 @@ const taskSchema = new Schema<TaskDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     date: { type: String, required: true },
-    subject: { type: String, enum: SUBJECT_IDS, required: true },
+    subject: { type: String, match: SUBJECT_ID_PATTERN, required: true },
     title: { type: String, required: true, maxlength: 160 },
     kind: { type: String, enum: TASK_KINDS, required: true },
     mins: { type: Number, required: true, min: 5, max: 240 },

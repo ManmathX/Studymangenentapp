@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 
 export interface HomeworkDocument {
   _id: Types.ObjectId;
@@ -19,7 +19,7 @@ export interface HomeworkDocument {
 const homeworkSchema = new Schema<HomeworkDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    subject: { type: String, enum: SUBJECT_IDS, required: true },
+    subject: { type: String, match: SUBJECT_ID_PATTERN, required: true },
     title: { type: String, required: true, maxlength: 140 },
     note: { type: String, default: '', maxlength: 500 },
     teacher: { type: String, default: '', maxlength: 60 },

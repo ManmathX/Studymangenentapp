@@ -1,7 +1,15 @@
 import { z } from '../../common/zod.js';
-import { dateKeySchema, subjectSchema, trimmedText } from '../../common/utils/validators.js';
+import {
+  boardCodeSchema,
+  chapterKeySchema,
+  customSubjectIdSchema,
+  dateKeySchema,
+  hexColorSchema,
+  subjectSchema,
+  trimmedText,
+} from '../../common/utils/validators.js';
 import { isValidTimeZone } from '../../common/utils/dates.js';
-import { SUBJECT_IDS } from '../syllabus/syllabus.data.js';
+import { MAX_CUSTOM_SUBJECTS } from '../syllabus/syllabus.data.js';
 import { AGE_MODES } from '../planner/planner.types.js';
 
 const timeOfDay = z
@@ -13,7 +21,10 @@ const timezone = z
   .max(64)
   .refine(isValidTimeZone, 'Unknown time zone')
   .openapi({ example: 'Asia/Kolkata' });
-const chapterKey = z.string().regex(/^[a-z]+-\d{1,2}$/, 'Invalid chapter key');
+const chapterKey = chapterKeySchema;
+
+export const MAX_CUSTOM_CHAPTERS = 40;
+const MAX_SUBJECTS = 20;
 
 export const onboardingExamSchema = z.strictObject({
   subject: subjectSchema,
@@ -23,11 +34,29 @@ export const onboardingExamSchema = z.strictObject({
   chapterKeys: z.array(chapterKey).min(1).max(40),
 });
 
+/** A subject the NCERT list doesn't have. Its chapters are keyed `<id>-1`, `<id>-2`… in order. */
+export const customSubjectSchema = z
+  .strictObject({
+    id: customSubjectIdSchema,
+    name: trimmedText(1, 40),
+    color: hexColorSchema,
+    chapters: z
+      .array(trimmedText(1, 80))
+      .min(1, 'Add at least one chapter')
+      .max(MAX_CUSTOM_CHAPTERS),
+  })
+  .openapi('CustomSubject');
+
 export const onboardingBodySchema = z
   .strictObject({
+    board: boardCodeSchema.default('cbse'),
     cls: z.number().int().min(6).max(12),
-    subjects: z.array(subjectSchema).min(1).max(SUBJECT_IDS.length),
-    taughtChapterKeys: z.array(chapterKey).max(200).default([]),
+    subjects: z
+      .array(subjectSchema)
+      .min(1, 'Keep at least one subject')
+      .max(MAX_SUBJECTS + MAX_CUSTOM_SUBJECTS),
+    customSubjects: z.array(customSubjectSchema).max(MAX_CUSTOM_SUBJECTS).default([]),
+    taughtChapterKeys: z.array(chapterKey).max(600).default([]),
     exams: z.array(onboardingExamSchema).max(20).default([]),
     schoolStart: timeOfDay,
     schoolEnd: timeOfDay,
@@ -71,9 +100,13 @@ export const profileSchema = z
   .object({
     name: z.string(),
     cls: z.number().int(),
-    board: z.literal('CBSE'),
+    board: z.string().openapi({ description: 'Board code, e.g. cbse' }),
+    boardName: z.string().openapi({ example: 'CBSE' }),
     timezone: z.string(),
-    subjects: z.array(z.enum(SUBJECT_IDS)),
+    subjects: z.array(subjectSchema),
+    subjectInfo: z
+      .array(z.object({ id: z.string(), name: z.string(), color: z.string(), custom: z.boolean() }))
+      .openapi({ description: 'Name and colour of every subject in `subjects`, in order' }),
     schoolStart: z.number().int(),
     schoolEnd: z.number().int(),
     tuitionDays: z.array(z.number().int()),

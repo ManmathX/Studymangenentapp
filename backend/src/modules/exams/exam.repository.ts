@@ -14,6 +14,8 @@ export interface ExamRepository {
   create(userId: string, exam: NewExam, tx?: TxHandle): Promise<ExamRecord>;
   insertMany(userId: string, exams: NewExam[], tx: TxHandle): Promise<ExamRecord[]>;
   list(userId: string, fromDate?: string): Promise<ExamRecord[]>;
+  findById(userId: string, id: string): Promise<ExamRecord | null>;
+  update(userId: string, id: string, patch: Partial<NewExam>): Promise<ExamRecord | null>;
   delete(userId: string, id: string): Promise<boolean>;
   deleteByUser(userId: string, tx: TxHandle): Promise<void>;
 }
@@ -53,6 +55,23 @@ export class MongoExamRepository implements ExamRepository {
     if (fromDate) filter.date = { $gte: fromDate };
     const docs = await ExamModel.find(filter).sort({ date: 1 }).limit(200).lean<ExamDocument[]>();
     return docs.map(toRecord);
+  }
+
+  async findById(userId: string, id: string): Promise<ExamRecord | null> {
+    const doc = await ExamModel.findOne({
+      _id: toObjectId(id),
+      userId: toObjectId(userId),
+    }).lean<ExamDocument>();
+    return doc ? toRecord(doc) : null;
+  }
+
+  async update(userId: string, id: string, patch: Partial<NewExam>): Promise<ExamRecord | null> {
+    const doc = await ExamModel.findOneAndUpdate(
+      { _id: toObjectId(id), userId: toObjectId(userId) },
+      { $set: patch },
+      { new: true, runValidators: true },
+    ).lean<ExamDocument>();
+    return doc ? toRecord(doc) : null;
   }
 
   async delete(userId: string, id: string): Promise<boolean> {

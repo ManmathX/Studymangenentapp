@@ -4,7 +4,12 @@ import type { NewExam } from '../exams/exam.repository.js';
 import type { NewHomework } from '../homework/homework.repository.js';
 import type { NewTask } from '../tasks/task.repository.js';
 import type { ChapterStatus } from '../planner/planner.types.js';
-import { catalogChapters, SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import {
+  catalogChapters,
+  SUBJECT_IDS,
+  SUBJECTS,
+  type SubjectId,
+} from '../syllabus/syllabus.data.js';
 import type { NewProfile } from './profile.repository.js';
 
 /** Demo student: Class 9 CBSE with a realistic week of work, ported from the prototype. */
@@ -289,9 +294,11 @@ export function buildDemoData(today: DateKey, timezone: string): DemoData {
 
   const profile: NewProfile = {
     cls: 9,
-    board: 'CBSE',
+    board: 'cbse',
+    boardName: 'CBSE',
     timezone,
     subjects: [...SUBJECT_IDS],
+    subjectInfo: SUBJECT_IDS.map((id) => ({ ...SUBJECTS[id], custom: false })),
     schoolStart: 465,
     schoolEnd: 825,
     tuitionDays: [1, 3, 5],

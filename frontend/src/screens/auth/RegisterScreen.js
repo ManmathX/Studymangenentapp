@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { applyServerErrors, rules } from '../../utils/validation';
 import { AuthLayout } from './AuthLayout';
+import { GoogleButton } from './GoogleButton';
 
 export function RegisterScreen({ navigation }) {
   const register = useAuthStore((state) => state.register);
@@ -27,7 +28,8 @@ export function RegisterScreen({ navigation }) {
   });
 
   return (
-    <AuthLayout title={'Your syllabus.\nYour schedule.'} subtitle="Create an account. Every NCERT chapter is ready for you, and you decide when to study each one.">
+    <AuthLayout title={'Your syllabus.\nYour schedule.'} subtitle="Create an account. Every chapter for your board is ready for you, and you decide when to study each one.">
+      <GoogleButton />
       <FormField control={control} name="name" rules={rules.name} label="First name" placeholder="Your first name" autoComplete="given-name" textContentType="givenName" />
       <FormField control={control} name="email" rules={rules.email} label="Email" placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" textContentType="emailAddress" />
       <FormField control={control} name="password" rules={rules.newPassword} label="Password" placeholder="8+ characters with a letter and a number" secureTextEntry autoComplete="new-password" textContentType="newPassword" />

@@ -50,7 +50,8 @@ describe('onboarding', () => {
       profile: {
         name: 'Ravi',
         cls: 9,
-        board: 'CBSE',
+        board: 'cbse',
+        boardName: 'CBSE',
         timezone: TIMEZONE,
         today: TODAY,
         ageMode: 'deeper',

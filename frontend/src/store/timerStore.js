@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { habitsApi } from '../services/api/endpoints';
 import { duration } from '../utils/format';
-import { subjects } from '../theme/tokens';
+import { subjectInfo } from './subjectStore';
 import { toast } from './toastStore';
 import { useResourceStore } from './resourceStore';
 
@@ -71,7 +71,8 @@ export const useTimerStore = create((set, get) => ({
     }
     try {
       await habitsApi.logFocus(subject, minutes);
-      toast(completed ? `Session done. ${duration(minutes)} of ${subjects[subject].name} logged. Take a 5 min break.` : `${duration(minutes)} of ${subjects[subject].name} logged.`);
+      const name = subjectInfo(subject).name;
+      toast(completed ? `Session done. ${duration(minutes)} of ${name} logged. Take a 5 min break.` : `${duration(minutes)} of ${name} logged.`);
       useResourceStore.getState().invalidate(['habits', 'today', 'progress']);
     } catch (error) {
       toast(error.message, 'error');

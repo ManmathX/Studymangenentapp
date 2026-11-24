@@ -4,6 +4,7 @@ import type { AccountService } from './account.service.js';
 import {
   changePasswordBodySchema,
   deleteAccountBodySchema,
+  googleLoginBodySchema,
   loginBodySchema,
   meSchema,
   refreshBodySchema,
@@ -42,6 +43,19 @@ export function authRoutes(
       body: loginBodySchema,
       response: sessionSchema,
       handler: ({ body, meta }) => auth.login(body, meta),
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/auth/google',
+      access: 'public',
+      summary: 'Sign in (or sign up) with a Google ID token',
+      description:
+        'Links to an existing account with the same verified email. Returns 503 GOOGLE_NOT_CONFIGURED when the server has no GOOGLE_CLIENT_IDS.',
+      tags,
+      middleware: [authLimiter],
+      body: googleLoginBodySchema,
+      response: sessionSchema,
+      handler: ({ body, meta }) => auth.googleLogin(body.idToken, meta),
     }),
     defineRoute({
       method: 'post',

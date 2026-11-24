@@ -11,7 +11,8 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
 import { taskActions } from '../../services/actions';
 import { resources } from '../../services/resources';
-import { CHAPTER_STATUS_ORDER, chapterStatus, subjects } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
+import { CHAPTER_STATUS_ORDER, chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
 import { addDays, dayName, hours } from '../../utils/format';
 
@@ -85,6 +86,7 @@ function Subjects({ subjects: list, navigation }) {
 
 function SubjectRow({ item, expanded, onToggle }) {
   const { colors } = useTheme();
+  const subjectOf = useSubjectInfo();
   return (
     <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded }} style={styles.subjectRow}>
       <View style={styles.subjectHead}>
@@ -93,7 +95,7 @@ function SubjectRow({ item, expanded, onToggle }) {
         <Muted small style={styles.flex}>
           {item.coverage.covered} of {item.coverage.total}
         </Muted>
-        <Text style={{ color: subjects[item.subject].color, fontWeight: '700' }}>{item.coverage.percent}%</Text>
+        <Text style={{ color: subjectOf(item.subject).color, fontWeight: '700' }}>{item.coverage.percent}%</Text>
         <View style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}>
           <Icon name="chevron" size={16} color={colors.textTertiary} />
         </View>

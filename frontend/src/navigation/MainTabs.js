@@ -1,5 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Icon } from '../components/ui/Icon';
+import { useResource } from '../hooks/useResource';
+import { resources } from '../services/resources';
 import { HabitsScreen } from '../screens/habits/HabitsScreen';
 import { HomeworkScreen } from '../screens/homework/HomeworkScreen';
 import { PlanScreen } from '../screens/plan/PlanScreen';
@@ -20,6 +22,8 @@ const TABS = [
 const renderAvatar = () => <HeaderAvatar />;
 
 export function MainTabs() {
+  // Loads the profile up front: it carries the names and colours of the student's subjects.
+  useResource(resources.profile);
   return (
     <Tab.Navigator screenOptions={{ headerRight: renderAvatar, headerTitleStyle: { fontWeight: '700', fontSize: 20 } }}>
       {TABS.map((tab) => (

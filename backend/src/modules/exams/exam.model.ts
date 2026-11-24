@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 
 export interface ExamDocument {
   _id: Types.ObjectId;
@@ -14,7 +14,7 @@ export interface ExamDocument {
 const examSchema = new Schema<ExamDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    subject: { type: String, enum: SUBJECT_IDS, required: true },
+    subject: { type: String, match: SUBJECT_ID_PATTERN, required: true },
     name: { type: String, required: true, maxlength: 80 },
     date: { type: String, required: true },
     weight: { type: Number, required: true, min: 1, max: 100 },

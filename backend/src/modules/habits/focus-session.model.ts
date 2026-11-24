@@ -1,5 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
-import { SUBJECT_IDS, type SubjectId } from '../syllabus/syllabus.data.js';
+import { SUBJECT_ID_PATTERN, type SubjectId } from '../syllabus/syllabus.data.js';
 
 export interface FocusSessionDocument {
   _id: Types.ObjectId;
@@ -14,7 +14,7 @@ const focusSessionSchema = new Schema<FocusSessionDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     date: { type: String, required: true },
-    subject: { type: String, enum: SUBJECT_IDS, required: true },
+    subject: { type: String, match: SUBJECT_ID_PATTERN, required: true },
     mins: { type: Number, required: true, min: 1, max: 240 },
   },
   { timestamps: { createdAt: true, updatedAt: false } },

@@ -36,7 +36,7 @@ export function PlanScreen({ navigation, route }) {
             <Strip days={days} value={date} onChange={setSelected} />
             {date ? <DayPlan date={date} navigation={navigation} /> : null}
             <PlanTools navigation={navigation} />
-            <UpcomingTests />
+            <UpcomingTests navigation={navigation} />
           </>
         )}
       </AsyncBoundary>
@@ -131,12 +131,13 @@ function PlanTools({ navigation }) {
   );
 }
 
-function UpcomingTests() {
+function UpcomingTests({ navigation }) {
   const exams = useResource(resources.exams);
   const remove = useAsyncAction(examActions.remove);
+  const edit = (exam) => navigation.navigate('EditExam', { exam: { id: exam.id, subject: exam.subject, name: exam.name, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys } });
   return (
     <Section title="Upcoming tests" flush>
-      <AsyncBoundary resource={exams}>{(list) => <ExamList exams={list} onRemove={remove.execute} busy={remove.pending} />}</AsyncBoundary>
+      <AsyncBoundary resource={exams}>{(list) => <ExamList exams={list} onEdit={edit} onRemove={remove.execute} busy={remove.pending} />}</AsyncBoundary>
     </Section>
   );
 }
