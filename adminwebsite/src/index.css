@@ -474,3 +474,8 @@ textarea:focus,
     grid-column: 2;
   }
 }
+
+.chapters .book-row td {
+  padding-top: 14px;
+  border-bottom: 1px solid var(--line);
+}

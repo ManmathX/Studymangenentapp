@@ -21,7 +21,12 @@ const subjectSchema = z
     name: z.string(),
     color: z.string(),
     chapters: z.array(
-      z.object({ key: z.string(), name: z.string(), difficulty: z.number().int() }),
+      z.object({
+        key: z.string(),
+        name: z.string(),
+        difficulty: z.number().int(),
+        book: z.string().optional(),
+      }),
     ),
   })
   .openapi('SyllabusSubject');

@@ -8,6 +8,14 @@ const KIND_LABEL = { national: 'National boards', state: 'State boards' }
 
 export function BoardsPage() {
   const boards = useLoad(syllabus.overview, [])
+  const [loadedMessage, setLoadedMessage] = useState('')
+  const loadStandard = useAction(async () => {
+    const { added, updated } = await syllabus.loadStandard()
+    const plural = (n) => `${n} subject${n === 1 ? '' : 's'}`
+    const parts = [added ? `added ${plural(added)}` : '', updated ? `filled in books and chapters for ${plural(updated)}` : ''].filter(Boolean)
+    setLoadedMessage(parts.length ? `Done: ${parts.join(' and ')}.` : 'CBSE and ICSE already have every standard subject, book and chapter.')
+    boards.reload()
+  })
 
   return (
     <>
@@ -16,7 +24,14 @@ export function BoardsPage() {
           <h1>Boards</h1>
           <p className="muted">Pick a class to edit its subjects and chapters. Students see a class once it has at least one subject with chapters.</p>
         </div>
+        <div className="row">
+          <button className="btn" onClick={loadStandard.run} disabled={loadStandard.busy} title="Adds the standard CBSE and ICSE/ISC subjects, books and chapters for classes 6–12. Your renamed subjects, difficulties and own chapters are kept.">
+            {loadStandard.busy ? 'Loading…' : 'Load standard syllabus'}
+          </button>
+        </div>
       </div>
+      {loadedMessage ? <p className="muted small">{loadedMessage}</p> : null}
+      <ErrorText>{loadStandard.error}</ErrorText>
       {boards.loading && !boards.data ? <p className="muted">Loading…</p> : null}
       <ErrorText>{boards.error}</ErrorText>
       {boards.data

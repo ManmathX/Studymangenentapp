@@ -6,13 +6,11 @@ import type {
   NewCatalogSubject,
 } from './catalog.repository.js';
 import type { BoardKind, CatalogChapterDoc } from './catalog.model.js';
+import { standardSubjects } from './standard-catalog.data.js';
 import {
   ALL_CLASSES,
+  MAX_CHAPTERS_PER_SUBJECT,
   RESERVED_SUBJECT_ID_PATTERN,
-  SUBJECT_IDS,
-  SUBJECTS,
-  SUPPORTED_CLASSES,
-  SYLLABUS,
 } from './syllabus.data.js';
 
 /** Boards that exist on a fresh install. Admins add state boards from the admin portal. */
@@ -37,19 +35,57 @@ export const SUBJECT_PALETTE = [
   '#64D2FF',
 ];
 
-/** The NCERT data that shipped with the app becomes CBSE class 9 and 10 in the catalogue. */
+/** The standard CBSE and ICSE syllabus for classes 6–12 (see standard-catalog.data.ts). */
 function defaultSubjects(): NewCatalogSubject[] {
-  return SUPPORTED_CLASSES.flatMap((cls) =>
-    SUBJECT_IDS.map((subjectId, position) => ({
-      board: 'cbse',
-      cls,
-      subjectId,
-      name: SUBJECTS[subjectId].name,
-      color: SUBJECTS[subjectId].color,
-      position,
-      chapters: SYLLABUS[cls][subjectId].map(([name, difficulty]) => ({ name, difficulty })),
-    })),
-  );
+  return standardSubjects();
+}
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * Brings an existing subject's chapters in line with the standard list without losing admin
+ * work: chapters the standard list knows get its book name (if they have none), missing
+ * standard chapters are added, and chapters are grouped by book in standard order. Chapters
+ * an admin added stay, after the standard ones of their book. Returns null if nothing changes.
+ */
+function mergeChapters(
+  current: CatalogChapterDoc[],
+  standard: CatalogChapterDoc[],
+): CatalogChapterDoc[] | null {
+  const used = new Set<number>();
+  const result: CatalogChapterDoc[] = [];
+  // Standard chapters in standard order, keeping the admin's copy (name, difficulty) if present.
+  for (const chapter of standard) {
+    const index = current.findIndex(
+      (have, i) =>
+        !used.has(i) &&
+        sameName(have.name, chapter.name) &&
+        (!have.book || have.book === chapter.book),
+    );
+    if (index === -1) {
+      result.push(chapter);
+      continue;
+    }
+    used.add(index);
+    const have = current[index]!;
+    result.push(have.book || !chapter.book ? have : { ...have, book: chapter.book });
+  }
+  // Chapters only the admin has: put each after the last chapter of its own book, else at the end.
+  current.forEach((chapter, i) => {
+    if (used.has(i)) return;
+    const last = chapter.book ? result.findLastIndex((c) => c.book === chapter.book) : -1;
+    if (last === -1) result.push(chapter);
+    else result.splice(last + 1, 0, chapter);
+  });
+  const same =
+    result.length === current.length &&
+    result.every(
+      (c, i) =>
+        c.name === current[i]!.name &&
+        c.difficulty === current[i]!.difficulty &&
+        c.book === current[i]!.book,
+    );
+  return same || result.length > MAX_CHAPTERS_PER_SUBJECT ? null : result;
 }
 
 /** What a student sees for one subject at setup. Chapter keys are `<subject>-<n>`, 1-based. */
@@ -57,7 +93,7 @@ export interface CatalogSubjectView {
   id: string;
   name: string;
   color: string;
-  chapters: { key: string; name: string; difficulty: 1 | 2 | 3 }[];
+  chapters: { key: string; name: string; difficulty: 1 | 2 | 3; book?: string }[];
 }
 
 export interface NewSubjectInput {
@@ -89,6 +125,7 @@ function toView(subject: CatalogSubjectRecord): CatalogSubjectView {
       key: `${subject.subjectId}-${index + 1}`,
       name: chapter.name,
       difficulty: chapter.difficulty,
+      ...(chapter.book ? { book: chapter.book } : {}),
     })),
   };
 }
@@ -136,6 +173,48 @@ export class CatalogService {
   }
 
   /* ---------- Admin ---------- */
+
+  /**
+   * Loads the standard CBSE and ICSE syllabus (classes 6–12) into an existing catalogue.
+   * Re-creates CBSE/ICSE if they were deleted and adds the subjects a class doesn't have.
+   * For subjects a class already has, it fills in missing book names and appends missing
+   * standard chapters, then groups chapters by book in standard order. Names, difficulties
+   * and chapters an admin added by hand are kept.
+   */
+  async importStandard(): Promise<{ added: number; updated: number }> {
+    await this.ensureSeeded();
+    const boards = await this.catalog.listBoards();
+    const missingBoards = DEFAULT_BOARDS.filter(
+      (board) => !boards.some((existing) => existing.code === board.code),
+    ).map((board, index) => ({ ...board, position: boards.length + index }));
+    await this.catalog.insertMissing(missingBoards, []);
+
+    const standard = defaultSubjects();
+    const fresh: NewCatalogSubject[] = [];
+    let updated = 0;
+    const classKeys = [...new Set(standard.map((s) => `${s.board}:${s.cls}`))];
+    for (const key of classKeys) {
+      const [board, clsText] = key.split(':') as [string, string];
+      const cls = Number(clsText);
+      const existing = await this.catalog.listSubjects(board, cls);
+      const wanted = standard.filter((s) => s.board === board && s.cls === cls);
+      let nextPosition = existing.length;
+      for (const subject of wanted) {
+        const current = existing.find((s) => s.subjectId === subject.subjectId);
+        if (!current) {
+          fresh.push({ ...subject, position: nextPosition++ });
+          continue;
+        }
+        const merged = mergeChapters(current.chapters, subject.chapters);
+        if (merged) {
+          await this.catalog.updateSubject(current.id, { chapters: merged });
+          updated += 1;
+        }
+      }
+    }
+    await this.catalog.insertMissing([], fresh);
+    return { added: fresh.length, updated };
+  }
 
   /** Every board with how many subjects each class has. */
   async overview() {

@@ -21,6 +21,7 @@ const subjectParams = z.object({ id: objectIdSchema });
 const chapterSchema = z.strictObject({
   name: trimmedText(1, 120),
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(2),
+  book: trimmedText(1, 60).optional(),
 });
 const chaptersSchema = z.array(chapterSchema).max(MAX_CHAPTERS_PER_SUBJECT);
 
@@ -39,7 +40,9 @@ const catalogSubjectSchema = z
     name: z.string(),
     color: z.string(),
     position: z.number().int(),
-    chapters: z.array(z.object({ name: z.string(), difficulty: z.number().int() })),
+    chapters: z.array(
+      z.object({ name: z.string(), difficulty: z.number().int(), book: z.string().optional() }),
+    ),
   })
   .openapi('CatalogSubject');
 
@@ -119,6 +122,27 @@ export function catalogAdminRoutes(catalog: CatalogService, audit: AuditSink): R
           op: 'board.delete',
           board: params.code,
         });
+      },
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/admin/syllabus/standard',
+      access,
+      summary: 'Load the standard CBSE and ICSE syllabus (classes 6–12)',
+      description:
+        'Adds every standard subject a class does not have yet. For subjects it already has, ' +
+        'fills in missing book names and appends missing standard chapters; names, ' +
+        'difficulties and chapters an admin added are kept.',
+      tags,
+      response: z.object({ added: z.number().int(), updated: z.number().int() }),
+      handler: async ({ auth, meta }) => {
+        const result = await catalog.importStandard();
+        await audit.record('admin.syllabus_changed', auth.userId, meta, {
+          op: 'standard.import',
+          added: result.added,
+          updated: result.updated,
+        });
+        return result;
       },
     }),
     defineRoute({

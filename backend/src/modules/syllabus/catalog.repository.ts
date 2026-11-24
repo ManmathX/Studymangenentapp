@@ -64,7 +64,9 @@ function toSubject(doc: CatalogSubjectDocument): CatalogSubjectRecord {
     name: doc.name,
     color: doc.color,
     position: doc.position,
-    chapters: doc.chapters.map(({ name, difficulty }) => ({ name, difficulty })),
+    chapters: doc.chapters.map(({ name, difficulty, book }) =>
+      book ? { name, difficulty, book } : { name, difficulty },
+    ),
   };
 }
 

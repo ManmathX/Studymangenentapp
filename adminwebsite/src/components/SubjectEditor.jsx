@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { DIFFICULTIES, syllabus } from '../api.js'
 import { useAction } from '../hooks.js'
 import { ErrorText } from './ui.jsx'
@@ -10,12 +10,19 @@ const withRowId = (chapter) => {
   return { ...chapter, rowId: rowSequence }
 }
 
-/** Edits one subject's name, colour and chapter list (order, names, difficulty). Saves all at once. */
+/**
+ * Edits one subject's name, colour and chapter list (order, names, book, difficulty). Saves all at
+ * once. Chapters can belong to a book (e.g. Part 1 and Part 2 of one textbook); the list shows a
+ * heading wherever the book changes.
+ */
 export function SubjectEditor({ subject, onSaved, onClose }) {
   const [name, setName] = useState(subject.name)
   const [color, setColor] = useState(subject.color)
   const [chapters, setChapters] = useState(() => subject.chapters.map(withRowId))
   const [bulk, setBulk] = useState('')
+  const [bulkBook, setBulkBook] = useState('')
+  const books = [...new Set(chapters.map((chapter) => chapter.book?.trim()).filter(Boolean))]
+  const listId = `books-${subject.id}`
   const [saved, setSaved] = useState(false)
 
   const change = (next) => {
@@ -35,12 +42,19 @@ export function SubjectEditor({ subject, onSaved, onClose }) {
       .map((line) => line.trim())
       .filter(Boolean)
     if (!lines.length) return
-    change([...chapters, ...lines.map((line) => withRowId({ name: line, difficulty: 2 }))])
+    const book = bulkBook.trim()
+    const added = lines.map((line) => withRowId({ name: line, difficulty: 2, ...(book ? { book } : {}) }))
+    // New chapters go after the last chapter of the same book, so a book's chapters stay together.
+    const last = book ? chapters.findLastIndex((chapter) => chapter.book?.trim() === book) : -1
+    change(last === -1 ? [...chapters, ...added] : [...chapters.slice(0, last + 1), ...added, ...chapters.slice(last + 1)])
     setBulk('')
   }
 
   const save = useAction(async () => {
-    const clean = chapters.map((chapter) => ({ name: chapter.name.trim(), difficulty: Number(chapter.difficulty) }))
+    const clean = chapters.map((chapter) => {
+      const book = chapter.book?.trim()
+      return { name: chapter.name.trim(), difficulty: Number(chapter.difficulty), ...(book ? { book } : {}) }
+    })
     if (clean.some((chapter) => !chapter.name)) throw new Error('Every chapter needs a name. Delete empty rows.')
     await syllabus.updateSubject(subject.id, { name: name.trim(), color: color.toUpperCase(), chapters: clean })
     setSaved(true)
@@ -86,42 +100,62 @@ export function SubjectEditor({ subject, onSaved, onClose }) {
           <tr>
             <th>#</th>
             <th>Chapter</th>
+            <th>Book</th>
             <th>Difficulty</th>
             <th aria-label="Actions" />
           </tr>
         </thead>
         <tbody>
           {chapters.map((chapter, index) => (
-            <tr key={chapter.rowId}>
-              <td className="muted">{index + 1}</td>
-              <td className="grow">
-                <input value={chapter.name} onChange={(e) => update(index, { name: e.target.value })} maxLength={120} aria-label={`Chapter ${index + 1} name`} />
-              </td>
-              <td>
-                <select value={chapter.difficulty} onChange={(e) => update(index, { difficulty: Number(e.target.value) })} aria-label={`Chapter ${index + 1} difficulty`}>
-                  {DIFFICULTIES.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td className="row nowrap">
-                <button type="button" className="btn icon" onClick={() => move(index, -1)} disabled={index === 0} aria-label="Move up">
-                  ↑
-                </button>
-                <button type="button" className="btn icon" onClick={() => move(index, 1)} disabled={index === chapters.length - 1} aria-label="Move down">
-                  ↓
-                </button>
-                <button type="button" className="btn icon danger" onClick={() => change(chapters.filter((_, i) => i !== index))} aria-label={`Delete chapter ${index + 1}`}>
-                  ✕
-                </button>
-              </td>
-            </tr>
+            <Fragment key={chapter.rowId}>
+              {books.length > 0 && (index === 0 || (chapters[index - 1].book?.trim() || '') !== (chapter.book?.trim() || '')) ? (
+                <tr className="book-row">
+                  <td colSpan={5}>
+                    <strong>{chapter.book?.trim() || 'No book'}</strong>
+                  </td>
+                </tr>
+              ) : null}
+              <tr>
+                <td className="muted">{index + 1}</td>
+                <td className="grow">
+                  <input value={chapter.name} onChange={(e) => update(index, { name: e.target.value })} maxLength={120} aria-label={`Chapter ${index + 1} name`} />
+                </td>
+                <td>
+                  <input
+                    value={chapter.book ?? ''}
+                    onChange={(e) => update(index, { book: e.target.value })}
+                    list={listId}
+                    maxLength={60}
+                    placeholder="—"
+                    aria-label={`Chapter ${index + 1} book`}
+                  />
+                </td>
+                <td>
+                  <select value={chapter.difficulty} onChange={(e) => update(index, { difficulty: Number(e.target.value) })} aria-label={`Chapter ${index + 1} difficulty`}>
+                    {DIFFICULTIES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="row nowrap">
+                  <button type="button" className="btn icon" onClick={() => move(index, -1)} disabled={index === 0} aria-label="Move up">
+                    ↑
+                  </button>
+                  <button type="button" className="btn icon" onClick={() => move(index, 1)} disabled={index === chapters.length - 1} aria-label="Move down">
+                    ↓
+                  </button>
+                  <button type="button" className="btn icon danger" onClick={() => change(chapters.filter((_, i) => i !== index))} aria-label={`Delete chapter ${index + 1}`}>
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            </Fragment>
           ))}
           {!chapters.length ? (
             <tr>
-              <td colSpan={4} className="muted">
+              <td colSpan={5} className="muted">
                 No chapters. Add some below; students only see subjects that have chapters.
               </td>
             </tr>
@@ -129,6 +163,15 @@ export function SubjectEditor({ subject, onSaved, onClose }) {
         </tbody>
       </table>
 
+      <datalist id={listId}>
+        {books.map((book) => (
+          <option key={book} value={book} />
+        ))}
+      </datalist>
+      <label className="field">
+        <span>Book for the new chapters (optional, e.g. “Ganita Prakash – Part 2”)</span>
+        <input value={bulkBook} onChange={(e) => setBulkBook(e.target.value)} list={listId} maxLength={60} placeholder="No book" />
+      </label>
       <label className="field">
         <span>Add chapters, one per line</span>
         <textarea rows={3} value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder={'Light: Reflection and Refraction\nElectricity'} />

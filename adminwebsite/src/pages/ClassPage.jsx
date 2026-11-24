@@ -72,6 +72,7 @@ export function ClassPage() {
                       <strong>{subject.name}</strong>
                       <div className="muted small">
                         <code>{subject.subjectId}</code> · {subject.chapters.length} chapter{subject.chapters.length === 1 ? '' : 's'}
+                        {bookSummary(subject.chapters)}
                         {subject.chapters.length ? '' : ' · hidden from students until it has chapters'}
                       </div>
                     </div>
@@ -198,4 +199,12 @@ function CopyClass({ code, cls, boards, onCopied }) {
       </form>
     </section>
   )
+}
+
+/** " · Ganita Prakash – Part 1 (8), Ganita Prakash – Part 2 (7)" for subjects split into books. */
+function bookSummary(chapters) {
+  const counts = new Map()
+  for (const chapter of chapters) if (chapter.book) counts.set(chapter.book, (counts.get(chapter.book) ?? 0) + 1)
+  if (!counts.size) return ''
+  return ` · ${[...counts].map(([book, count]) => `${book} (${count})`).join(', ')}`
 }

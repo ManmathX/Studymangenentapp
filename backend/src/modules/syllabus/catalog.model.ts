@@ -32,6 +32,8 @@ export const BoardModel = model<BoardDocument>('Board', boardSchema);
 export interface CatalogChapterDoc {
   name: string;
   difficulty: 1 | 2 | 3;
+  /** The textbook the chapter is in, e.g. "Ganita Prakash – Part 1". Optional. */
+  book?: string;
 }
 
 /**
@@ -65,6 +67,7 @@ const catalogSubjectSchema = new Schema<CatalogSubjectDocument>(
           _id: false,
           name: { type: String, required: true, trim: true, maxlength: 120 },
           difficulty: { type: Number, enum: [1, 2, 3], default: 2 },
+          book: { type: String, trim: true, maxlength: 60 },
         },
       ],
       validate: {

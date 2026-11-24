@@ -43,18 +43,69 @@ async function admin() {
 }
 
 describe('syllabus catalogue', () => {
-  it('starts with CBSE class 9 and 10, and ICSE with nothing loaded', async () => {
+  it('starts with CBSE and ICSE loaded for classes 6 to 12', async () => {
     const { accessToken } = await register(ctx.app);
     const user = as(ctx.app, accessToken);
     const boards = await user.get('/syllabus/boards').expect(200);
     expect(boards.body.data.map((board: { code: string }) => board.code)).toEqual(['cbse', 'icse']);
 
-    const cbse = await user.get('/syllabus/classes?board=cbse').expect(200);
-    expect(cbse.body.data).toContainEqual({ cls: 10, available: true });
-    const icse = await user.get('/syllabus/classes?board=icse').expect(200);
-    expect(icse.body.data.every((row: { available: boolean }) => !row.available)).toBe(true);
-    await user.get('/syllabus/9?board=icse').expect(404);
+    for (const board of ['cbse', 'icse']) {
+      const classes = await user.get(`/syllabus/classes?board=${board}`).expect(200);
+      expect(classes.body.data.every((row: { available: boolean }) => row.available)).toBe(true);
+    }
+    const icse10 = await user.get('/syllabus/10?board=icse').expect(200);
+    expect(icse10.body.data.map((subject: { id: string }) => subject.id)).toContain('physics');
+    const cbse12 = await user.get('/syllabus/12?board=cbse').expect(200);
+    expect(cbse12.body.data[0]).toMatchObject({ id: 'physics', name: 'Physics' });
+    expect(cbse12.body.data[0].chapters[0]).toMatchObject({
+      key: 'physics-1',
+      name: 'Electric Charges and Fields',
+      book: 'Physics – Part 1',
+    });
     await user.get('/syllabus/classes?board=nowhere').expect(404);
+  });
+
+  it('loads the standard syllabus into an existing catalogue without touching edits', async () => {
+    const boss = await admin();
+    const subjects = await boss.get('/admin/syllabus/boards/icse/classes/7/subjects').expect(200);
+    const maths = subjects.body.data.find((s: { subjectId: string }) => s.subjectId === 'maths');
+    await boss.patch(`/admin/syllabus/subjects/${maths.id}`, { name: 'Mathematics' }).expect(200);
+    const physics = subjects.body.data.find(
+      (s: { subjectId: string }) => s.subjectId === 'physics',
+    );
+    await boss.delete(`/admin/syllabus/subjects/${physics.id}`).expect(204);
+
+    // An older catalogue: CBSE class 7 maths without book names and missing Part 2.
+    const cbse7 = await boss.get('/admin/syllabus/boards/cbse/classes/7/subjects').expect(200);
+    const cbseMaths = cbse7.body.data.find((s: { subjectId: string }) => s.subjectId === 'maths');
+    await boss
+      .patch(`/admin/syllabus/subjects/${cbseMaths.id}`, {
+        chapters: [
+          { name: 'My own revision chapter' },
+          { name: 'Large Numbers Around Us', difficulty: 3 },
+        ],
+      })
+      .expect(200);
+
+    const loaded = await boss.post('/admin/syllabus/standard', {}).expect(200);
+    expect(loaded.body.data).toEqual({ added: 1, updated: 1 });
+    const merged = (
+      await boss.get('/admin/syllabus/boards/cbse/classes/7/subjects').expect(200)
+    ).body.data.find((s: { subjectId: string }) => s.subjectId === 'maths').chapters;
+    expect(merged).toHaveLength(16);
+    expect(merged[0]).toEqual({
+      name: 'Large Numbers Around Us',
+      difficulty: 3,
+      book: 'Ganita Prakash – Part 1',
+    });
+    expect(merged[8]).toMatchObject({ name: 'Geometric Twins', book: 'Ganita Prakash – Part 2' });
+    expect(merged[15]).toEqual({ name: 'My own revision chapter', difficulty: 2 });
+    const after = await boss.get('/admin/syllabus/boards/icse/classes/7/subjects').expect(200);
+    expect(after.body.data.map((s: { name: string }) => s.name)).toContain('Mathematics');
+    expect(after.body.data.map((s: { subjectId: string }) => s.subjectId)).toContain('physics');
+
+    const again = await boss.post('/admin/syllabus/standard', {}).expect(200);
+    expect(again.body.data).toEqual({ added: 0, updated: 0 });
   });
 
   it('counts the seeded classes on the very first admin request', async () => {
@@ -174,6 +225,10 @@ describe('syllabus catalogue', () => {
   });
 
   it('rejects added subjects that clash or are unknown', async () => {
+    const boss = await admin();
+    await boss
+      .post('/admin/syllabus/boards', { code: 'empty-board', name: 'Empty Board', kind: 'state' })
+      .expect(201);
     const { accessToken } = await register(ctx.app);
     const user = as(ctx.app, accessToken);
     const sanskrit = { id: 'custom1', name: 'Sanskrit', color: '#5AC8FA', chapters: ['Sandhi'] };
@@ -190,7 +245,7 @@ describe('syllabus catalogue', () => {
         },
         'DUPLICATE_SUBJECT',
       ],
-      [{ board: 'icse', exams: [] }, 'CLASS_NOT_AVAILABLE'],
+      [{ board: 'empty-board', exams: [] }, 'CLASS_NOT_AVAILABLE'],
       [{ board: 'nowhere', exams: [] }, 'BOARD_NOT_FOUND'],
       [
         {

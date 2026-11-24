@@ -17,7 +17,7 @@ describe('syllabus', () => {
     const user = as(ctx.app, accessToken);
     const classes = await user.get('/syllabus/classes').expect(200);
     expect(classes.body.data).toContainEqual({ cls: 9, available: true });
-    expect(classes.body.data).toContainEqual({ cls: 6, available: false });
+    expect(classes.body.data).toContainEqual({ cls: 6, available: true });
 
     const syllabus = await user.get('/syllabus/9').expect(200);
     expect(syllabus.body.data.map((subject: { id: string }) => subject.id)).toEqual(
@@ -28,8 +28,8 @@ describe('syllabus', () => {
       name: expect.any(String),
     });
 
-    const missing = await user.get('/syllabus/6').expect(404);
-    expect(missing.body.error.code).toBe('CLASS_NOT_AVAILABLE');
+    const six = await user.get('/syllabus/6').expect(200);
+    expect(six.body.data[0]).toMatchObject({ id: 'maths', name: 'Maths' });
   });
 });
 
@@ -79,7 +79,6 @@ describe('onboarding', () => {
     const { accessToken } = await register(ctx.app);
     const user = as(ctx.app, accessToken);
     const cases: [object, number, string][] = [
-      [{ cls: 6 }, 400, 'CLASS_NOT_AVAILABLE'],
       [{ taughtChapterKeys: ['maths-99'] }, 400, 'UNKNOWN_CHAPTER'],
       [{ exams: [{ ...ONBOARDING.exams[0], date: TODAY }] }, 400, 'EXAM_IN_PAST'],
       [{ exams: [{ ...ONBOARDING.exams[0], chapterKeys: ['science-1'] }] }, 400, 'UNKNOWN_CHAPTER'],

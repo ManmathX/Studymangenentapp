@@ -111,6 +111,7 @@ const enc = encodeURIComponent
 
 export const syllabus = {
   overview: () => request('GET', '/admin/syllabus/boards'),
+  loadStandard: () => request('POST', '/admin/syllabus/standard', {}),
   createBoard: (body) => request('POST', '/admin/syllabus/boards', body),
   updateBoard: (code, patch) => request('PATCH', `/admin/syllabus/boards/${enc(code)}`, patch),
   deleteBoard: (code) => request('DELETE', `/admin/syllabus/boards/${enc(code)}`),
