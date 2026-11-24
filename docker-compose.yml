@@ -44,6 +44,9 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (at least 32 random characters)}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081}
       GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      # Forgot-password emails; leave SMTP_URL empty to turn password reset off.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       TRUST_PROXY: ${TRUST_PROXY:-0}
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}

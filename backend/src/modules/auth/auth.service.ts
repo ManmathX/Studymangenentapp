@@ -8,7 +8,6 @@ import {
 import type { RequestMeta } from '../../common/http/types.js';
 import type { Clock } from '../../common/utils/clock.js';
 import type { AuditSink } from '../audit/audit.service.js';
-import type { ProfileRepository } from '../profile/profile.repository.js';
 import type { UserRecord, UserRepository } from '../users/user.repository.js';
 import type { LoginBody, RegisterBody } from './auth.schemas.js';
 import type { GoogleIdTokenVerifier } from './google.service.js';
@@ -23,10 +22,10 @@ export interface TokenPair {
   expiresIn: number;
 }
 
+/** The server only knows the login. The student's plan lives on their phone, so it is not part of a session. */
 export interface Session {
   user: UserRecord;
   tokens: TokenPair;
-  onboarded: boolean;
 }
 
 export interface AuthSettings {
@@ -47,7 +46,6 @@ export class AuthService {
   constructor(
     private readonly users: UserRepository,
     private readonly refreshTokens: RefreshTokenRepository,
-    private readonly profiles: ProfileRepository,
     private readonly passwords: PasswordHasher,
     private readonly tokens: TokenService,
     private readonly audit: AuditSink,
@@ -70,7 +68,7 @@ export class AuthService {
     });
     await this.audit.record('auth.register', user.id, meta);
     const tokens = await this.issueTokens(user, this.tokens.newFamilyId(), meta);
-    return { user, tokens, onboarded: false };
+    return { user, tokens };
   }
 
   async login(input: LoginBody, meta: RequestMeta): Promise<Session> {
@@ -90,7 +88,7 @@ export class AuthService {
     await this.audit.record('auth.login', credentials.user.id, meta);
     const user = { ...credentials.user, lastLoginAt: now.toISOString() };
     const tokens = await this.issueTokens(user, this.tokens.newFamilyId(), meta);
-    return { user, tokens, onboarded: Boolean(await this.profiles.findByUser(user.id)) };
+    return { user, tokens };
   }
 
   /**
@@ -103,7 +101,6 @@ export class AuthService {
       throw new AppError(503, 'GOOGLE_NOT_CONFIGURED', 'Google sign-in is not set up yet');
     const identity = await this.google.verify(idToken);
     let user = await this.users.findByGoogleId(identity.googleId);
-    let created = false;
     if (!user) {
       if (!identity.emailVerified)
         throw new UnauthorizedError(
@@ -122,7 +119,6 @@ export class AuthService {
           role: 'student',
           googleId: identity.googleId,
         });
-        created = true;
         await this.audit.record('auth.register', user.id, meta, { provider: 'google' });
       }
     }
@@ -131,8 +127,7 @@ export class AuthService {
     await this.audit.record('auth.google_login', user.id, meta);
     const signedIn = { ...user, lastLoginAt: now.toISOString() };
     const tokens = await this.issueTokens(signedIn, this.tokens.newFamilyId(), meta);
-    const onboarded = created ? false : Boolean(await this.profiles.findByUser(user.id));
-    return { user: signedIn, tokens, onboarded };
+    return { user: signedIn, tokens };
   }
 
   /**
@@ -175,10 +170,10 @@ export class AuthService {
     await this.audit.record('auth.logout', userId, meta);
   }
 
-  async me(userId: string): Promise<{ user: UserRecord; onboarded: boolean }> {
+  async me(userId: string): Promise<{ user: UserRecord }> {
     const user = await this.users.findById(userId);
     if (!user) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
-    return { user, onboarded: Boolean(await this.profiles.findByUser(userId)) };
+    return { user };
   }
 
   /**

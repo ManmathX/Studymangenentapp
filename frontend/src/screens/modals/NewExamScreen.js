@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
-import { CheckRow, Chip, ChipGroup } from '../../components/ui/Controls';
+import { CheckRow, Chip, ChipGroup, SegmentedControl } from '../../components/ui/Controls';
 import { FormField } from '../../components/ui/Field';
 import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
@@ -14,17 +14,36 @@ import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { addDays } from '../../utils/format';
 import { rules } from '../../utils/validation';
+import { ExamSeriesForm } from './ExamSeriesForm';
 
 const WEIGHTS = [5, 10, 20, 30, 50, 80];
 const DAYS_AHEAD = 60;
 
-/** New test, or editing one when opened with `{ exam }` (the EditExam route). */
+const TEST_KINDS = [
+  { value: 'unit', label: 'Unit test' },
+  { value: 'halfYearly', label: 'Half-yearly' },
+  { value: 'final', label: 'Final exam' },
+];
+
+/**
+ * New test, or editing one when opened with `{ exam }` (the EditExam route). A new test can be
+ * a unit test, or a half-yearly or final exam with one paper per subject.
+ */
 export function NewExamScreen({ navigation, route }) {
   const profile = useResource(resources.profile);
   const exam = route?.params?.exam ?? null;
+  const [kind, setKind] = useState('unit');
+  const done = () => navigation.goBack();
   return (
     <Screen>
-      <AsyncBoundary resource={profile}>{(data) => <ExamForm profile={data} exam={exam} onDone={() => navigation.goBack()} />}</AsyncBoundary>
+      <AsyncBoundary resource={profile}>
+        {(data) => (
+          <View style={{ gap: 16 }}>
+            {exam ? null : <SegmentedControl label="Kind of test" value={kind} onChange={setKind} options={TEST_KINDS} />}
+            {exam || kind === 'unit' ? <ExamForm profile={data} exam={exam} onDone={done} /> : <ExamSeriesForm key={kind} profile={data} type={kind} onDone={done} />}
+          </View>
+        )}
+      </AsyncBoundary>
     </Screen>
   );
 }

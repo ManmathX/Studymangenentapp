@@ -10,14 +10,14 @@ import {
   proposeDays,
   readiness,
   stepsFor,
+  tuitionsOn,
 } from './core/engine';
 import { planExamSlots, summarizeSlots } from './core/examPlan';
 import { consecutiveDates, defaultSeriesChapters, planSeriesSlots } from './core/examSeries';
 import { shortDate } from './core/shortDate';
-import { SUBJECTS } from './core/syllabus';
 import { CHAPTER_STATUSES, EXAM_PREP_DAYS, EXAM_SERIES, PLANNING_HORIZON_DAYS, REVISION_INTERVALS } from './core/types';
 import { read, write } from './db';
-import { badRequest, conflict, notFound, unprocessable } from './errors';
+import { badRequest, conflict, invalidField, notFound, unprocessable } from './errors';
 import {
   copy,
   examsFrom,
@@ -30,6 +30,7 @@ import {
   requireTask,
   slippedTasks,
   studentDay,
+  subjectName,
   tasksInRange,
 } from './queries';
 import { dateKey, intIn, list, oneOf, text, unique } from './validate';
@@ -93,22 +94,54 @@ export function planForExam(draft, exam, ctx) {
   return summarizeSlots(blocks, reason);
 }
 
+/** The subject must be one the student takes, and every chapter must belong to it. Returns unique keys. */
+function checkSubjectAndChapters(data, profile, subject, chapterKeys) {
+  if (!profile.subjects.includes(subject)) throw badRequest('That subject is turned off', 'SUBJECT_NOT_SELECTED');
+  const keys = unique(list(chapterKeys, 'chapterKeys', { min: 1, max: 40, message: 'Tick at least one chapter so the planner knows what to revise.' }));
+  const fits = keys.every((key) => data.chapters.some((chapter) => chapter.key === key && chapter.subject === subject));
+  if (!fits) throw badRequest('Pick chapters from this subject', 'UNKNOWN_CHAPTER');
+  return keys;
+}
+
 /** Adds a test and plans its study slots on the calendar straight away. */
 export function createExam(input) {
   return write((draft) => {
     const ctx = studentDay(draft);
     const { profile, today } = ctx;
-    if (!profile.subjects.includes(input.subject)) throw badRequest('That subject is turned off', 'SUBJECT_NOT_SELECTED');
+    const keys = checkSubjectAndChapters(draft, profile, input.subject, input.chapterKeys);
     const name = text(input.name, 'name', { max: 80, required: 'Give the test a name.' });
     const date = dateKey(input.date, 'date');
     if (date <= today) throw badRequest('Pick a date after today', 'EXAM_IN_PAST');
     const weight = intIn(input.weight, 1, 100, 'weight');
-    const keys = unique(list(input.chapterKeys, 'chapterKeys', { min: 1, max: 40, message: 'Tick at least one chapter so the planner knows what to revise.' }));
-    const chapters = keys.map((key) => draft.chapters.find((chapter) => chapter.key === key));
-    if (chapters.some((chapter) => !chapter || chapter.subject !== input.subject)) throw badRequest('Pick chapters from this subject', 'UNKNOWN_CHAPTER');
     const exam = { id: newId(draft), type: 'unit', subject: input.subject, name, date, weight, chapterKeys: keys };
     draft.exams.push(exam);
     return { exam: copy(exam), planned: planForExam(draft, exam, ctx) };
+  });
+}
+
+/**
+ * Changes a test's name, date, weight, subject or chapters. Study blocks already in the plan
+ * stay; "Fill free slots before exams" then plans around the new date and chapters.
+ */
+export function updateExam(id, patch) {
+  if (!patch || !Object.keys(patch).length) throw badRequest('Send at least one field to change');
+  return write((draft) => {
+    const { profile, today } = studentDay(draft);
+    const exam = draft.exams.find((item) => item.id === id);
+    if (!exam) throw notFound('Test not found', 'EXAM_NOT_FOUND');
+    const name = patch.name === undefined ? exam.name : text(patch.name, 'name', { max: 80, required: 'Give the test a name.' });
+    const date = patch.date === undefined ? exam.date : dateKey(patch.date, 'date');
+    // A test that is today can still be renamed; only a newly picked date has to be in the future.
+    if (date !== exam.date && date <= today) throw badRequest('Pick a date after today', 'EXAM_IN_PAST');
+    const weight = patch.weight === undefined ? exam.weight : intIn(patch.weight, 1, 100, 'weight');
+    const subject = patch.subject ?? exam.subject;
+    if (subject !== exam.subject && patch.chapterKeys === undefined) throw badRequest('Pick chapters from the new subject', 'UNKNOWN_CHAPTER');
+    const chapterKeys =
+      patch.subject !== undefined || patch.chapterKeys !== undefined
+        ? checkSubjectAndChapters(draft, profile, subject, patch.chapterKeys ?? exam.chapterKeys)
+        : exam.chapterKeys;
+    Object.assign(exam, { name, date, weight, subject, chapterKeys });
+    return copy(exam);
   });
 }
 
@@ -130,7 +163,7 @@ export function examSeriesDraft(type, firstDate, skipSundays = true) {
     const chapters = subjectChapters(data, subject);
     return {
       subject,
-      name: `${EXAM_SERIES[type].label}: ${SUBJECTS[subject].name}`,
+      name: `${EXAM_SERIES[type].label}: ${subjectName(profile, subject)}`,
       date: dates[index],
       chapterKeys: defaultSeriesChapters(type, chapters),
       chapters: chapters.map(({ key, name, status }) => ({ key, name, status })),
@@ -148,15 +181,16 @@ export function createExamSeries(input) {
     const seen = new Set();
     const exams = papers.map((paper, index) => {
       if (!profile.subjects.includes(paper.subject)) throw badRequest('That subject is turned off', 'SUBJECT_NOT_SELECTED');
-      if (seen.has(paper.subject)) throw badRequest(`${SUBJECTS[paper.subject].name} has two papers`, 'DUPLICATE_PAPER');
+      const subject = subjectName(profile, paper.subject);
+      if (seen.has(paper.subject)) throw badRequest(`${subject} has two papers`, 'DUPLICATE_PAPER');
       seen.add(paper.subject);
       const date = dateKey(paper.date, `papers.${index}.date`);
-      if (date <= today) throw badRequest(`Pick a date after today for ${SUBJECTS[paper.subject].name}`, 'EXAM_IN_PAST');
+      if (date <= today) throw badRequest(`Pick a date after today for ${subject}`, 'EXAM_IN_PAST');
       const own = subjectChapters(draft, paper.subject);
       const keys =
         paper.chapterKeys === undefined
           ? defaultSeriesChapters(input.type, own)
-          : unique(list(paper.chapterKeys, `papers.${index}.chapterKeys`, { min: 1, max: 40, message: `Tick at least one ${SUBJECTS[paper.subject].name} chapter` }));
+          : unique(list(paper.chapterKeys, `papers.${index}.chapterKeys`, { min: 1, max: 40, message: `Tick at least one ${subject} chapter` }));
       if (keys.some((key) => !own.some((chapter) => chapter.key === key))) throw badRequest('Pick chapters from each paper’s subject', 'UNKNOWN_CHAPTER');
       return { subject: paper.subject, date, chapterKeys: keys };
     });
@@ -171,7 +205,7 @@ export function createExamSeries(input) {
       seriesName: series.label,
       prepFrom,
       subject: exam.subject,
-      name: `${series.label}: ${SUBJECTS[exam.subject].name}`,
+      name: `${series.label}: ${subjectName(profile, exam.subject)}`,
       date: exam.date,
       weight: series.weight,
       chapterKeys: exam.chapterKeys,
@@ -191,6 +225,50 @@ export function createExamSeries(input) {
     });
     insertTasks(draft, blocks.map((block) => ({ ...block, source: 'app', status: 'accepted' })));
     return { exams: stored.map(copy), planned: { ...summarizeSlots(blocks, reason), unplaced, papers: stored.length } };
+  });
+}
+
+/* ---------- Marks ---------- */
+
+const MAX_OUT_OF = 1000;
+const percentOf = ({ score, outOf }) => Math.round((score / outOf) * 100);
+
+function marksValue(value, field, max) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || (value * 2) % 1 !== 0) throw invalidField(field, 'Use a number; half marks like 32.5 are fine');
+  const min = field === 'outOf' ? 1 : 0;
+  if (value < min || value > max) throw invalidField(field, field === 'outOf' ? `Use a total from 1 to ${max}` : `Marks can be 0 to ${max}`);
+  return value;
+}
+
+/** Tests that have happened (today's included), newest first, with any marks entered. */
+export function recentResults(data, today, limit = 20) {
+  return data.exams
+    .filter((exam) => exam.date <= today)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, limit)
+    .map((exam) => ({
+      id: exam.id,
+      subject: exam.subject,
+      name: exam.name,
+      date: exam.date,
+      result: exam.result ? { ...exam.result, percent: percentOf(exam.result) } : null,
+    }));
+}
+
+/** Saves the marks for a test that has happened (`{ score, outOf }`), or clears them with `null`. */
+export function setExamResult(id, result) {
+  return write((draft) => {
+    const { today } = studentDay(draft);
+    const exam = draft.exams.find((item) => item.id === id);
+    if (!exam) throw notFound('Test not found', 'EXAM_NOT_FOUND');
+    if (exam.date > today) throw badRequest('Add marks once the test has happened', 'EXAM_NOT_TAKEN');
+    if (result === null) {
+      exam.result = null;
+    } else {
+      const outOf = marksValue(result?.outOf, 'outOf', MAX_OUT_OF);
+      exam.result = { score: marksValue(result?.score, 'score', outOf), outOf };
+    }
+    return copy(exam);
   });
 }
 
@@ -317,8 +395,11 @@ export function planDay(date) {
     plannedMins,
     limitMins,
     overloaded,
-    tuitionDay: profile.tuitionDays.includes(weekday(date)),
-    rows: layout.rows.map((row) => (row.type === 'task' ? { type: 'task', start: row.start, end: row.end, task: copy(row.task) } : { ...row })),
+    tuitionDay: tuitionsOn(profile, weekday(date)).length > 0,
+    // The timeline shows fixed blocks and tasks; the day's Homework and study slots are in `slots`.
+    rows: layout.rows
+      .filter((row) => row.type !== 'slot')
+      .map((row) => (row.type === 'task' ? { type: 'task', start: row.start, end: row.end, task: copy(row.task) } : { ...row })),
     slots: layout.slots,
     overflow: layout.overflow.map(copy),
     moveSuggestion: overloaded ? relief(load, profile, today, date, dayTasks) : null,

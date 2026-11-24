@@ -19,7 +19,7 @@ export function limitFor(profile, date) {
   if (profile.ageMode === 'simple') base = Math.min(base, SIMPLE_MODE_CAP);
   const day = weekday(date);
   if (day === 0) base += SUNDAY_BONUS;
-  else if (profile.tuitionDays.includes(day)) base -= TUITION_PENALTY;
+  else if (tuitionsOn(profile, day).length) base -= TUITION_PENALTY;
   if (profile.examSeason) base += EXAM_SEASON_BONUS;
   return base;
 }
@@ -73,6 +73,46 @@ export function priority(daysLeft, weight, difficulty) {
   return Math.round((10 / Math.max(1, daysLeft)) * (weight / 10) * difficulty * 10) / 10;
 }
 /* ---------- Day timeline ---------- */
+/** Plans saved before tuition times were editable had one tuition, 16:00 to 17:30. */
+export const DEFAULT_TUITION_START = 16 * 60;
+export const DEFAULT_TUITION_END = 17 * 60 + 30;
+/** Earliest and latest a tuition class can be (morning tuition before school is common). */
+export const TUITION_EARLIEST = 5 * 60;
+export const TUITION_LATEST = DAY_END;
+export const MAX_TUITIONS = 6;
+
+/**
+ * The student's tuitions: `{ name, days (1 = Monday … 6 = Saturday), start, end }`, times in
+ * minutes after midnight. Plans saved earlier had one set of tuition days and one time.
+ */
+export function tuitionsOf(profile) {
+  if (Array.isArray(profile.tuitions)) return profile.tuitions;
+  if (!profile.tuitionDays?.length) return [];
+  return [
+    {
+      name: '',
+      days: profile.tuitionDays,
+      start: profile.tuitionStart ?? DEFAULT_TUITION_START,
+      end: profile.tuitionEnd ?? DEFAULT_TUITION_END,
+    },
+  ];
+}
+
+/** Tuitions on a weekday, earliest first. */
+export function tuitionsOn(profile, day) {
+  return tuitionsOf(profile)
+    .filter((tuition) => tuition.days.includes(day))
+    .sort((a, b) => a.start - b.start);
+}
+
+export const tuitionLabel = (tuition) => tuition.name || 'Tuition';
+
+/** School hours on a weekday (1 = Monday … 6 = Saturday). Saturday is a half day. */
+export function schoolHours(profile, day) {
+  const start = profile.schoolStart;
+  return { start, end: day === 6 ? Math.min(profile.schoolEnd, start + 285) : profile.schoolEnd };
+}
+
 export function fixedBlocks(profile, date) {
   const day = weekday(date);
   if (day === 0) {
@@ -85,21 +125,21 @@ export function fixedBlocks(profile, date) {
       ],
     };
   }
-  const schoolStart = profile.schoolStart;
-  const schoolOut = day === 6 ? Math.min(profile.schoolEnd, schoolStart + 285) : profile.schoolEnd;
+  const school = schoolHours(profile, day);
   const blocks = [
     {
-      start: schoolStart,
-      end: schoolOut,
+      start: school.start,
+      end: school.end,
       label: day === 6 ? 'School (half day)' : 'School',
       kind: 'school',
     },
-    { start: schoolOut, end: schoolOut + 75, label: 'Lunch and rest', kind: 'rest' },
+    { start: school.end, end: school.end + 75, label: 'Lunch and rest', kind: 'rest' },
   ];
-  if (profile.tuitionDays.includes(day))
-    blocks.push({ start: 16 * 60, end: 17 * 60 + 30, label: 'Tuition', kind: 'tuition' });
+  for (const tuition of tuitionsOn(profile, day)) {
+    blocks.push({ start: tuition.start, end: tuition.end, label: tuitionLabel(tuition), kind: 'tuition' });
+  }
   blocks.push({ start: 20 * 60, end: 20 * 60 + 45, label: 'Dinner with family', kind: 'rest' });
-  return { start: schoolOut + 75, end: DAY_END, blocks };
+  return { start: school.end + 75, end: DAY_END, blocks };
 }
 /** Accepted tasks first in the order they were added, then suggestions by priority. */
 export function sortDayTasks(tasks) {

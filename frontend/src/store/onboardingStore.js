@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { newTuition } from '../utils/tuitions';
 
 /** Matches the API: up to 6 added subjects (`custom1` … `custom6`), 40 chapters each. */
 export const MAX_CUSTOM_SUBJECTS = 6;
@@ -17,7 +18,8 @@ const initialDraft = () => ({
   exams: [],
   schoolStart: '07:45',
   schoolEnd: '13:45',
-  tuitionDays: [1, 3, 5],
+  /** Tuition form rows (see utils/tuitions.js). */
+  tuitions: [newTuition({ days: [1, 3, 5], start: '16:00', end: '17:30' })],
   dailyLimitMins: 180,
 });
 
@@ -85,11 +87,6 @@ export const useOnboardingStore = create((set) => ({
   addExam: (exam) => set((state) => ({ draft: { ...state.draft, exams: [...state.draft.exams, exam] } })),
   updateExam: (exam) => set((state) => ({ draft: { ...state.draft, exams: state.draft.exams.map((item) => (item.id === exam.id ? exam : item)) } })),
   removeExam: (id) => set((state) => ({ draft: { ...state.draft, exams: state.draft.exams.filter((exam) => exam.id !== id) } })),
-  toggleTuition: (day) =>
-    set((state) => {
-      const days = state.draft.tuitionDays;
-      return { draft: { ...state.draft, tuitionDays: days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort() } };
-    }),
   reset: () => set({ draft: initialDraft() }),
 }));
 

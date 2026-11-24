@@ -13,8 +13,9 @@ export type AuditAction =
   | 'auth.password_changed'
   | 'auth.password_change_failed'
   | 'auth.account_deleted'
-  | 'data.wipe'
-  | 'data.demo_seeded'
+  | 'auth.password_reset_requested'
+  | 'auth.password_reset'
+  | 'auth.password_reset_failed'
   | 'admin.role_changed'
   | 'admin.syllabus_changed';
 

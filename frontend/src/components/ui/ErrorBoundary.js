@@ -11,7 +11,7 @@ function CrashScreen({ onRetry }) {
       <Icon name="warn" size={40} color={colors.warning} />
       <Text style={[styles.title, { color: colors.text }]}>Something went wrong</Text>
       <Text style={[styles.body, { color: colors.textSecondary }]}>
-        This screen hit a problem. Your plan is saved on the server, so nothing was lost.
+        This screen hit a problem. Your plan is saved on this phone, so nothing was lost.
       </Text>
       <Button title="Try again" variant="primary" onPress={onRetry} testID="crash-retry" />
     </View>

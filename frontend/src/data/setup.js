@@ -1,12 +1,19 @@
 import { addDays } from './core/dates';
 import { buildDemoData } from './core/demoSeed';
-import { DEFAULT_HOMEWORK_MINS, HOMEWORK_SLOT_OPTIONS } from './core/engine';
-import { ALL_CLASSES, catalogChapters, isSupportedClass, SUBJECT_IDS, SUBJECTS } from './core/syllabus';
+import {
+  DEFAULT_HOMEWORK_MINS,
+  HOMEWORK_SLOT_OPTIONS,
+  MAX_TUITIONS,
+  schoolHours,
+  TUITION_EARLIEST,
+  TUITION_LATEST,
+  tuitionsOf,
+} from './core/engine';
 import { AGE_MODES } from './core/types';
 import { clock } from './clock';
 import { emptyData, read, replaceAll, write } from './db';
-import { badRequest, conflict, invalidField, notFound } from './errors';
-import { copy, insertTasks, localToday, newId, studentDay, upsertLog } from './queries';
+import { badRequest, conflict, invalidField } from './errors';
+import { copy, insertTasks, localToday, newId, studentDay, subjectInfoOf, upsertLog } from './queries';
 import { planForExam } from './study';
 import { bool, dateKey, intIn, list, oneOf, text, timeOfDay, unique } from './validate';
 
@@ -14,23 +21,80 @@ const toMinutes = (time) => {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
 };
+const clock24 = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const SHARE_ITEMS = ['hours', 'streak', 'coverage', 'tests', 'marks'];
 
-/* ---------- Syllabus ---------- */
-
-export function syllabusClasses() {
-  return ALL_CLASSES.map((cls) => ({ cls, available: isSupportedClass(cls) }));
+/** One tuition from the form: optional name, its days, and "HH:MM" start and end. */
+function cleanTuition(tuition, index, all) {
+  const field = (name) => `tuitions.${index}.${name}`;
+  const name = tuition?.name === undefined || tuition.name === null ? '' : text(tuition.name, field('name'), { min: 0, max: 40 });
+  const label = name || (all.length > 1 ? `Tuition ${index + 1}` : 'tuition');
+  const days = list(tuition?.days, field('days'), { min: 1, max: 6, message: `Pick the days for ${label}` });
+  return {
+    name,
+    days: unique(days.map((day) => intIn(day, 1, 6, field('days')))).sort((a, b) => a - b),
+    start: toMinutes(timeOfDay(tuition.start, field('start'))),
+    end: toMinutes(timeOfDay(tuition.end, field('end'))),
+  };
 }
 
-export function syllabusFor(cls) {
-  if (!isSupportedClass(cls)) throw notFound('That class is not available yet', 'CLASS_NOT_AVAILABLE');
-  const chapters = catalogChapters(cls);
-  return SUBJECT_IDS.map((id) => ({
-    ...SUBJECTS[id],
-    chapters: chapters.filter((chapter) => chapter.subject === id).map(({ key, name, difficulty }) => ({ key, name, difficulty })),
-  }));
+/**
+ * School hours ("HH:MM") and the list of tuitions. Fields left out keep `current`'s value
+ * (the saved profile when editing later). Everything is checked together, since moving school
+ * can make a tuition that was fine clash with it.
+ */
+function cleanTimings(input, current = {}) {
+  const minutes = (field, fallback) => (input[field] === undefined ? fallback : toMinutes(timeOfDay(input[field], field)));
+  const next = {
+    schoolStart: minutes('schoolStart', current.schoolStart),
+    schoolEnd: minutes('schoolEnd', current.schoolEnd),
+    tuitions:
+      input.tuitions === undefined
+        ? tuitionsOf(current)
+        : list(input.tuitions, 'tuitions', { max: MAX_TUITIONS, message: 'Add tuitions one by one' }).map(cleanTuition),
+  };
+  if (next.schoolEnd <= next.schoolStart) throw invalidField('schoolEnd', 'School has to end after it starts');
+
+  const labelOf = (index) => next.tuitions[index].name || (next.tuitions.length > 1 ? `Tuition ${index + 1}` : 'Tuition');
+  next.tuitions.forEach((tuition, index) => {
+    const field = (name) => `tuitions.${index}.${name}`;
+    const label = labelOf(index);
+    if (tuition.end <= tuition.start) throw invalidField(field('end'), `${label} has to end after it starts`);
+    if (tuition.start < TUITION_EARLIEST || tuition.end > TUITION_LATEST) {
+      throw invalidField(field('start'), `${label} has to be between ${clock24(TUITION_EARLIEST)} and ${clock24(TUITION_LATEST)}`);
+    }
+    for (const day of tuition.days) {
+      const school = schoolHours(next, day);
+      if (tuition.start < school.end && tuition.end > school.start) {
+        throw invalidField(field('start'), `${label} on ${WEEKDAY_NAMES[day]} clashes with school (${clock24(school.start)} to ${clock24(school.end)})`);
+      }
+      next.tuitions.forEach((other, otherIndex) => {
+        if (otherIndex <= index || !other.days.includes(day)) return;
+        if (tuition.start < other.end && tuition.end > other.start) {
+          throw invalidField(field('start'), `${label} and ${labelOf(otherIndex)} overlap on ${WEEKDAY_NAMES[day]}`);
+        }
+      });
+    }
+  });
+  return next;
 }
+
+/** Tuitions as the screens get them: times in minutes after midnight. */
+const tuitionsDto = (profile) => tuitionsOf(profile).map(({ name, days, start, end }) => ({ name, days: [...days], start, end }));
+
+/* Same limits as the server's syllabus catalogue. */
+const BOARD_CODE = /^[a-z][a-z0-9-]{1,31}$/;
+const SUBJECT_ID = /^[a-z][a-z0-9]{1,23}$/;
+export const MAX_CUSTOM_SUBJECTS = 6;
+const CUSTOM_SUBJECT_ID = new RegExp(`^custom[1-${MAX_CUSTOM_SUBJECTS}]$`);
+const MAX_CUSTOM_CHAPTERS = 40;
+const MAX_CATALOG_SUBJECTS = 40;
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+const FALLBACK_COLOR = '#8E8E93';
+/** Chapters of a subject the student added themselves start at medium difficulty. */
+const CUSTOM_CHAPTER_DIFFICULTY = 2;
 
 /* ---------- Profile ---------- */
 
@@ -39,11 +103,13 @@ function profileDto(profile, today) {
     name: profile.name,
     cls: profile.cls,
     board: profile.board,
+    boardName: profile.boardName ?? profile.board,
     timezone: profile.timezone,
     subjects: profile.subjects,
+    subjectInfo: subjectInfoOf(profile),
     schoolStart: profile.schoolStart,
     schoolEnd: profile.schoolEnd,
-    tuitionDays: profile.tuitionDays,
+    tuitions: tuitionsDto(profile),
     dailyLimitMins: profile.dailyLimitMins,
     homeworkMins: profile.homeworkMins ?? DEFAULT_HOMEWORK_MINS,
     weeklyGoalMins: profile.weeklyGoalMins,
@@ -60,17 +126,32 @@ export function getProfile() {
   return profileDto(profile, today);
 }
 
-/** Change name, age mode, exam season, the daily homework slot or what a parent summary includes. */
+const TIMING_FIELDS = ['schoolStart', 'schoolEnd', 'tuitions'];
+
+/**
+ * Change name, age mode, exam season, the daily homework slot, what is shared, school hours
+ * ("HH:MM"), or the whole list of tuitions (`[{ name, days, start, end }]`, times "HH:MM").
+ * Tasks already planned keep their days; each day is laid out around the new timings the
+ * next time it is shown.
+ */
 export function updateProfile(patch) {
   if (!patch || !Object.keys(patch).length) throw badRequest('Send at least one field to change');
   write((draft) => {
     const { profile } = studentDay(draft);
+    if (TIMING_FIELDS.some((field) => patch[field] !== undefined)) {
+      Object.assign(profile, cleanTimings(patch, profile));
+      // Older plans kept one set of tuition days and times; the list replaces them.
+      delete profile.tuitionDays;
+      delete profile.tuitionStart;
+      delete profile.tuitionEnd;
+    }
     if (patch.name !== undefined) profile.name = text(patch.name, 'name', { max: 60, required: 'Enter your name' });
     if (patch.homeworkMins !== undefined) profile.homeworkMins = oneOf(patch.homeworkMins, HOMEWORK_SLOT_OPTIONS, 'homeworkMins');
     if (patch.ageMode !== undefined) profile.ageMode = oneOf(patch.ageMode, AGE_MODES, 'ageMode');
     if (patch.examSeason !== undefined) profile.examSeason = bool(patch.examSeason, 'examSeason');
     if (patch.sharing) {
       if (patch.sharing.parent !== undefined) profile.sharing.parent = bool(patch.sharing.parent, 'parent');
+      if (patch.sharing.groups !== undefined) profile.sharing.groups = bool(patch.sharing.groups, 'groups');
       for (const [item, on] of Object.entries(patch.sharing.items ?? {})) {
         oneOf(item, SHARE_ITEMS, 'items');
         profile.sharing.items[item] = bool(on, item);
@@ -81,6 +162,80 @@ export function updateProfile(patch) {
 }
 
 /* ---------- First-time setup ---------- */
+
+/**
+ * The class's subjects as downloaded from the server's syllabus catalogue. Chapter keys are
+ * `<subject>-<n>` (1-based), the same rule the server uses, so ticked chapters line up.
+ */
+function cleanCatalog(catalog) {
+  const subjects = list(catalog, 'catalog', { min: 1, max: MAX_CATALOG_SUBJECTS, message: 'That class has no subjects yet' });
+  return subjects.map((subject) => {
+    if (typeof subject?.id !== 'string' || !SUBJECT_ID.test(subject.id) || !Array.isArray(subject.chapters)) {
+      throw badRequest('The syllabus for this class could not be read. Try again.', 'CATALOG_INVALID');
+    }
+    return {
+      id: subject.id,
+      name: text(subject.name, 'catalog', { max: 60 }),
+      color: HEX_COLOR.test(subject.color) ? subject.color : FALLBACK_COLOR,
+      chapters: subject.chapters.map((chapter, index) => ({
+        key: `${subject.id}-${index + 1}`,
+        name: text(chapter?.name, 'catalog', { max: 120 }),
+        difficulty: [1, 2, 3].includes(chapter?.difficulty) ? chapter.difficulty : 2,
+      })),
+    };
+  });
+}
+
+function cleanCustomSubject(custom, index) {
+  const field = (name) => `customSubjects.${index}.${name}`;
+  if (typeof custom?.id !== 'string' || !CUSTOM_SUBJECT_ID.test(custom.id)) throw invalidField(field('id'), 'Unknown subject');
+  if (!HEX_COLOR.test(custom.color)) throw invalidField(field('color'), 'Use a colour like #5AC8FA');
+  const chapters = list(custom.chapters, field('chapters'), { min: 1, max: MAX_CUSTOM_CHAPTERS, message: 'Add at least one chapter' });
+  return {
+    id: custom.id,
+    name: text(custom.name, field('name'), { max: 40, required: 'Give the subject a name' }),
+    color: custom.color,
+    chapters: chapters.map((chapter, n) => text(chapter, `${field('chapters')}.${n}`, { max: 80 })),
+  };
+}
+
+/**
+ * Works out the student's subjects and chapters from the class's catalogue plus any subjects
+ * they added. Throws for anything that doesn't fit together.
+ */
+function resolveSubjects(catalog, chosenIds, customSubjects) {
+  const chosen = new Set(chosenIds);
+  if (chosen.size !== chosenIds.length) throw badRequest('A subject is listed twice', 'DUPLICATE_SUBJECT');
+
+  const names = new Set(catalog.map((subject) => subject.name.toLowerCase()));
+  const customIds = new Set();
+  const added = customSubjects.map((custom, index) => {
+    const subject = cleanCustomSubject(custom, index);
+    if (customIds.has(subject.id)) throw badRequest('Two added subjects share an id', 'DUPLICATE_SUBJECT');
+    if (names.has(subject.name.toLowerCase())) throw badRequest(`You already have a subject called ${subject.name}`, 'DUPLICATE_SUBJECT');
+    customIds.add(subject.id);
+    names.add(subject.name.toLowerCase());
+    return subject;
+  });
+  const catalogIds = new Set(catalog.map((subject) => subject.id));
+  for (const id of chosen) {
+    if (!catalogIds.has(id) && !customIds.has(id)) throw badRequest(`Unknown subject ${id}`, 'UNKNOWN_SUBJECT');
+  }
+
+  const picked = catalog.filter((subject) => chosen.has(subject.id));
+  const own = added.filter((subject) => chosen.has(subject.id));
+  const subjectInfo = [
+    ...picked.map(({ id, name, color }) => ({ id, name, color, custom: false })),
+    ...own.map(({ id, name, color }) => ({ id, name, color, custom: true })),
+  ];
+  const chapters = [
+    ...picked.flatMap((subject) => subject.chapters.map((chapter) => ({ ...chapter, subject: subject.id }))),
+    ...own.flatMap((subject) =>
+      subject.chapters.map((name, index) => ({ key: `${subject.id}-${index + 1}`, subject: subject.id, name, difficulty: CUSTOM_CHAPTER_DIFFICULTY })),
+    ),
+  ];
+  return { subjectInfo, chapters };
+}
 
 function validExam(exam, index, { subjects, known, today }) {
   const field = (name) => `exams.${index}.${name}`;
@@ -96,50 +251,56 @@ function validExam(exam, index, { subjects, known, today }) {
   return { subject: exam.subject, name, date, weight, chapterKeys };
 }
 
-/** Creates the profile, chapters, tests and first suggested study blocks in one step. */
+/**
+ * Creates the profile, chapters, tests and their study slots in one step.
+ * `catalog` is the class's syllabus from the server (`GET /syllabus/:cls`); from here on the
+ * student's copy lives only on this device, so later catalogue edits don't change their plan.
+ */
 export function onboard(body) {
   const result = write((draft) => {
     if (draft.profile) throw conflict('Your planner is already set up', 'ALREADY_ONBOARDED');
     const name = text(body.name, 'name', { max: 60, required: 'Enter your name' });
-    intIn(body.cls, 6, 12, 'cls');
-    if (!isSupportedClass(body.cls)) throw badRequest('That class is not available yet', 'CLASS_NOT_AVAILABLE');
-    const chosen = list(body.subjects, 'subjects', { min: 1, max: SUBJECT_IDS.length, message: 'Keep at least one subject' });
-    for (const subject of chosen) oneOf(subject, SUBJECT_IDS, 'subjects');
-    const subjects = SUBJECT_IDS.filter((id) => chosen.includes(id));
-    const schoolStart = toMinutes(timeOfDay(body.schoolStart, 'schoolStart'));
-    const schoolEnd = toMinutes(timeOfDay(body.schoolEnd, 'schoolEnd'));
-    if (schoolEnd <= schoolStart) throw invalidField('schoolEnd', 'School has to end after it starts');
-    const tuitionDays = unique(list(body.tuitionDays ?? [], 'tuitionDays', { max: 6 }).map((day) => intIn(day, 1, 6, 'tuitionDays'))).sort();
+    if (typeof body.board !== 'string' || !BOARD_CODE.test(body.board)) throw invalidField('board', 'Pick a board');
+    const boardName = text(body.boardName ?? body.board, 'boardName', { max: 60 });
+    const cls = intIn(body.cls, 6, 12, 'cls');
+    const catalog = cleanCatalog(body.catalog);
+    const chosenIds = list(body.subjects, 'subjects', { min: 1, max: catalog.length + MAX_CUSTOM_SUBJECTS, message: 'Keep at least one subject' });
+    const customSubjects = list(body.customSubjects ?? [], 'customSubjects', { max: MAX_CUSTOM_SUBJECTS });
+    const { subjectInfo, chapters } = resolveSubjects(catalog, chosenIds, customSubjects);
+    const subjects = subjectInfo.map((subject) => subject.id);
+    // School times are required here; a student may have no tuition.
+    timeOfDay(body.schoolStart, 'schoolStart');
+    timeOfDay(body.schoolEnd, 'schoolEnd');
+    const timings = cleanTimings({ ...body, tuitions: body.tuitions ?? [] });
     const dailyLimitMins = oneOf(body.dailyLimitMins, [120, 180, 240], 'dailyLimitMins');
     const homeworkMins = oneOf(body.homeworkMins ?? DEFAULT_HOMEWORK_MINS, HOMEWORK_SLOT_OPTIONS, 'homeworkMins');
 
     const { today, start } = localToday();
-    const catalog = catalogChapters(body.cls, subjects);
-    const known = new Set(catalog.map((chapter) => chapter.key));
-    const taught = new Set(body.taughtChapterKeys ?? []);
+    const known = new Set(chapters.map((chapter) => chapter.key));
+    const taught = new Set(list(body.taughtChapterKeys ?? [], 'taughtChapterKeys', { max: 600 }));
     for (const key of taught) if (!known.has(key)) throw badRequest(`Unknown chapter ${key}`, 'UNKNOWN_CHAPTER');
     const exams = list(body.exams ?? [], 'exams', { max: 20 }).map((exam, index) => validExam(exam, index, { subjects, known, today }));
 
     const profile = {
       name,
-      cls: body.cls,
-      board: 'CBSE',
+      cls,
+      board: body.board,
+      boardName,
       timezone: clock.timeZone(),
       subjects,
-      schoolStart,
-      schoolEnd,
-      tuitionDays,
+      subjectInfo,
+      ...timings,
       dailyLimitMins,
       homeworkMins,
       weeklyGoalMins: dailyLimitMins * 5,
-      ageMode: body.cls <= 8 ? 'simple' : 'deeper',
+      ageMode: cls <= 8 ? 'simple' : 'deeper',
       examSeason: false,
       sharing: { parent: false, items: { hours: true, streak: true, coverage: true, tests: true, marks: false }, groups: false },
       trackingStart: today,
       isDemo: false,
     };
     draft.profile = profile;
-    draft.chapters = catalog.map((chapter, position) => ({
+    draft.chapters = chapters.map((chapter, position) => ({
       ...chapter,
       position,
       status: taught.has(chapter.key) ? 'learning' : 'not',
@@ -147,7 +308,7 @@ export function onboard(body) {
       revisions: taught.has(chapter.key) ? 1 : 0,
       snoozedUntil: null,
     }));
-    draft.exams = exams.map((exam) => ({ id: newId(draft), ...exam }));
+    draft.exams = exams.map((exam) => ({ id: newId(draft), type: 'unit', ...exam }));
     // Each test fills the calendar with self study, homework and revision slots, soonest test first.
     const ctx = { profile, today, start };
     const plans = [...draft.exams].sort((a, b) => (a.date < b.date ? -1 : 1)).map((exam) => planForExam(draft, exam, ctx));
@@ -157,7 +318,48 @@ export function onboard(body) {
   return { profile: getProfile(), planned: result.added, firstDate: result.firstDate };
 }
 
-/** Replaces everything with the demo student's realistic week. */
+/** Colours for subjects the student adds, in turn (the same ones setup uses). */
+const CUSTOM_COLORS = ['#5AC8FA', '#FFCC00', '#5856D6', '#A2845E', '#30B0C7', '#FF6482'];
+
+/**
+ * Adds a subject after setup: `{ name, chapters: [chapter names] }`. Its chapters start as
+ * not started, after every other chapter.
+ */
+export function addSubject(input) {
+  return write((draft) => {
+    const { profile } = studentDay(draft);
+    const subjects = subjectInfoOf(profile);
+    const taken = new Set(subjects.map((subject) => subject.id));
+    const id = Array.from({ length: MAX_CUSTOM_SUBJECTS }, (_, index) => `custom${index + 1}`).find((candidate) => !taken.has(candidate));
+    if (!id) throw conflict(`You can add up to ${MAX_CUSTOM_SUBJECTS} subjects of your own`, 'TOO_MANY_SUBJECTS');
+    const usedColors = new Set(subjects.map((subject) => subject.color));
+    const color = CUSTOM_COLORS.find((candidate) => !usedColors.has(candidate)) ?? CUSTOM_COLORS[subjects.length % CUSTOM_COLORS.length];
+    const subject = cleanCustomSubject({ name: input?.name, chapters: input?.chapters, id, color }, 0);
+    if (subjects.some((existing) => existing.name.toLowerCase() === subject.name.toLowerCase())) {
+      throw badRequest(`You already have a subject called ${subject.name}`, 'DUPLICATE_SUBJECT');
+    }
+
+    profile.subjectInfo = [...subjects, { id, name: subject.name, color, custom: true }];
+    profile.subjects = [...profile.subjects, id];
+    const first = draft.chapters.reduce((last, chapter) => Math.max(last, chapter.position + 1), 0);
+    draft.chapters.push(
+      ...subject.chapters.map((name, index) => ({
+        key: `${id}-${index + 1}`,
+        subject: id,
+        name,
+        difficulty: CUSTOM_CHAPTER_DIFFICULTY,
+        position: first + index,
+        status: 'not',
+        learnedOn: null,
+        revisions: 0,
+        snoozedUntil: null,
+      })),
+    );
+    return { id, name: subject.name, color, chapters: subject.chapters.length };
+  });
+}
+
+/** Replaces everything with the demo student's realistic week (CBSE Class 9, built into the app). */
 export function seedDemo(name) {
   const { today } = localToday();
   const demo = buildDemoData(today, clock.timeZone());
@@ -182,7 +384,7 @@ export function seedDemo(name) {
   return { profile: getProfile(), planned: 0, firstDate: null };
 }
 
-/** "Start over": deletes every planner record on this device. */
+/** "Start over": deletes every planner record on this device for this account. */
 export function wipeAll() {
   replaceAll(emptyData());
   return null;

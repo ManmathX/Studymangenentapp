@@ -1,4 +1,4 @@
-import { chaptersApi, dashboardApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, syllabusApi, tasksApi } from '../api';
+import { backupApi, chaptersApi, dashboardApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, tasksApi } from '../api';
 import { addDays } from '../core/dates';
 import { read } from '../db';
 import { advanceDays, freshPlanner, ONBOARDING, TODAY } from './helpers';
@@ -7,13 +7,32 @@ beforeEach(freshPlanner);
 
 const tasksFrom = (from = TODAY) => read().tasks.filter((task) => task.date >= from);
 const onboarded = () => profileApi.onboard(ONBOARDING);
+const SANSKRIT = { id: 'custom1', name: 'Sanskrit', color: '#5AC8FA', chapters: ['Sandhi', 'Samasa'] };
 
 describe('setup', () => {
-  it('lists the syllabus', async () => {
-    expect(await syllabusApi.classes()).toContainEqual({ cls: 9, available: true });
-    const syllabus = await syllabusApi.forClass(9);
-    expect(syllabus.map((subject) => subject.id)).toEqual(ONBOARDING.subjects);
-    await expect(syllabusApi.forClass(6)).rejects.toMatchObject({ code: 'CLASS_NOT_AVAILABLE' });
+  it('copies the board’s catalogue and the subjects the student added', async () => {
+    const { profile } = await profileApi.onboard({
+      ...ONBOARDING,
+      board: 'odisha',
+      boardName: 'Odisha Board',
+      subjects: ['maths', 'custom1'],
+      customSubjects: [SANSKRIT],
+      taughtChapterKeys: ['custom1-1'],
+      exams: [{ subject: 'custom1', name: 'Sanskrit test', date: '2026-11-30', weight: 10, chapterKeys: ['custom1-1', 'custom1-2'] }],
+    });
+    expect(profile).toMatchObject({ board: 'odisha', boardName: 'Odisha Board', subjects: ['maths', 'custom1'] });
+    expect(profile.subjectInfo).toEqual([
+      { id: 'maths', name: 'Maths', color: '#007AFF', custom: false },
+      { id: 'custom1', name: 'Sanskrit', color: '#5AC8FA', custom: true },
+    ]);
+    const sanskrit = await chaptersApi.list('custom1');
+    expect(sanskrit.map(({ key, name, difficulty, status }) => [key, name, difficulty, status])).toEqual([
+      ['custom1-1', 'Sandhi', 2, 'learning'],
+      ['custom1-2', 'Samasa', 2, 'not'],
+    ]);
+    expect(await chaptersApi.list('science')).toEqual([]);
+    expect((await dashboardApi.progress()).subjects.map((subject) => subject.name)).toEqual(['Maths', 'Sanskrit']);
+    expect((await dashboardApi.sharing()).boardName).toBe('Odisha Board');
   });
 
   it('needs setup before planner screens', async () => {
@@ -35,7 +54,15 @@ describe('setup', () => {
   it('validates the setup answers', async () => {
     const cases = [
       [{ name: '  ' }, 'VALIDATION_ERROR'],
-      [{ cls: 6 }, 'CLASS_NOT_AVAILABLE'],
+      [{ board: 'CBSE!' }, 'VALIDATION_ERROR'],
+      [{ catalog: [] }, 'VALIDATION_ERROR'],
+      [{ catalog: [{ id: 'Maths', name: 'Maths', chapters: [] }] }, 'CATALOG_INVALID'],
+      [{ subjects: ['maths', 'maths'] }, 'DUPLICATE_SUBJECT'],
+      [{ subjects: ['physics'] }, 'UNKNOWN_SUBJECT'],
+      [{ customSubjects: [{ ...SANSKRIT, name: 'maths' }] }, 'DUPLICATE_SUBJECT'],
+      [{ customSubjects: [SANSKRIT, { ...SANSKRIT, name: 'Odia' }] }, 'DUPLICATE_SUBJECT'],
+      [{ customSubjects: [{ ...SANSKRIT, id: 'custom9' }] }, 'VALIDATION_ERROR'],
+      [{ customSubjects: [{ ...SANSKRIT, chapters: [] }] }, 'VALIDATION_ERROR'],
       [{ taughtChapterKeys: ['maths-99'] }, 'UNKNOWN_CHAPTER'],
       [{ exams: [{ ...ONBOARDING.exams[0], date: TODAY }] }, 'EXAM_IN_PAST'],
       [{ exams: [{ ...ONBOARDING.exams[0], chapterKeys: ['science-1'] }] }, 'UNKNOWN_CHAPTER'],
@@ -51,7 +78,8 @@ describe('setup', () => {
 
   it('loads the demo student with a week of history', async () => {
     const demo = await profileApi.loadDemo('Ravi');
-    expect(demo.profile).toMatchObject({ name: 'Ravi', isDemo: true });
+    expect(demo.profile).toMatchObject({ name: 'Ravi', isDemo: true, board: 'cbse', boardName: 'CBSE' });
+    expect(demo.profile.subjectInfo.map((subject) => subject.name)).toEqual(['Maths', 'Science', 'Social Science', 'English', 'Hindi']);
     const today = await dashboardApi.today();
     expect(today.tasks.length).toBeGreaterThan(0);
     expect(today.streak).toBeGreaterThan(0);
@@ -60,10 +88,114 @@ describe('setup', () => {
 
   it('changes settings', async () => {
     await onboarded();
-    const profile = await profileApi.update({ name: 'Asha K', ageMode: 'simple', examSeason: true, sharing: { items: { marks: true } } });
-    expect(profile).toMatchObject({ name: 'Asha K', ageMode: 'simple', examSeason: true, sharing: { items: { hours: true, marks: true } } });
+    const profile = await profileApi.update({ name: 'Asha K', ageMode: 'simple', examSeason: true, sharing: { groups: true, items: { marks: true } } });
+    expect(profile).toMatchObject({ name: 'Asha K', ageMode: 'simple', examSeason: true, sharing: { groups: true, items: { hours: true, marks: true } } });
     await expect(profileApi.update({})).rejects.toMatchObject({ status: 400 });
     await expect(profileApi.update({ ageMode: 'expert' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+});
+
+describe('school hours and tuitions', () => {
+  // TODAY (18 Nov 2026) is a Wednesday. School is 07:45 to 13:45, and 12:30 on Saturday.
+  const tuitionRows = async (date) =>
+    (await planApi.day(date)).rows.filter((row) => row.kind === 'tuition').map(({ label, start, end }) => ({ label, start, end }));
+  const taskIds = (day) => [...day.rows.filter((row) => row.type === 'task').map((row) => row.task.id), ...day.overflow.map((task) => task.id)].sort();
+  const MATHS = { name: 'Maths tuition', days: [1, 3, 5], start: '16:00', end: '17:30' };
+  const SCIENCE = { name: 'Science tuition', days: [3, 6], start: '18:00', end: '19:00' };
+
+  it('plans around every tuition, each on its own days and at its own times', async () => {
+    const { profile } = await profileApi.onboard({ ...ONBOARDING, tuitions: [MATHS, SCIENCE, { name: ' ', days: [2], start: '06:00', end: '07:00' }] });
+    expect(profile.tuitions).toEqual([
+      { name: 'Maths tuition', days: [1, 3, 5], start: 960, end: 1050 },
+      { name: 'Science tuition', days: [3, 6], start: 1080, end: 1140 },
+      { name: '', days: [2], start: 360, end: 420 },
+    ]);
+    expect(await tuitionRows(TODAY)).toEqual([
+      { label: 'Maths tuition', start: 960, end: 1050 },
+      { label: 'Science tuition', start: 1080, end: 1140 },
+    ]);
+    expect(await tuitionRows('2026-11-24')).toEqual([{ label: 'Tuition', start: 360, end: 420 }]);
+    expect(await tuitionRows('2026-11-19')).toEqual([]);
+    expect((await planApi.day('2026-11-19')).tuitionDay).toBe(false);
+  });
+
+  it('adds, edits and removes tuitions later and plans each day around them', async () => {
+    await onboarded();
+    const before = await planApi.day(TODAY);
+    const profile = await profileApi.update({ schoolEnd: '14:30', tuitions: [{ ...MATHS, start: '17:00', end: '18:00' }, SCIENCE] });
+    expect(profile).toMatchObject({
+      schoolEnd: 870,
+      tuitions: [
+        { name: 'Maths tuition', days: [1, 3, 5], start: 1020, end: 1080 },
+        { name: 'Science tuition', days: [3, 6], start: 1080, end: 1140 },
+      ],
+    });
+    const after = await planApi.day(TODAY);
+    expect(await tuitionRows(TODAY)).toEqual([
+      { label: 'Maths tuition', start: 1020, end: 1080 },
+      { label: 'Science tuition', start: 1080, end: 1140 },
+    ]);
+    expect(taskIds(after)).toEqual(taskIds(before));
+    expect(after.rows.filter((row) => row.type === 'task').every((row) => row.end <= 1020 || row.start >= 1140)).toBe(true);
+    expect((await dashboardApi.sharing()).schoolDay).toEqual({ schoolStart: 465, schoolEnd: 870, tuitions: profile.tuitions });
+
+    expect((await profileApi.update({ tuitions: [SCIENCE] })).tuitions).toEqual([{ name: 'Science tuition', days: [3, 6], start: 1080, end: 1140 }]);
+    expect(await tuitionRows('2026-11-20')).toEqual([]);
+    expect((await profileApi.update({ tuitions: [] })).tuitions).toEqual([]);
+    expect(await tuitionRows(TODAY)).toEqual([]);
+  });
+
+  it('refuses tuitions that don’t fit and keeps the saved ones', async () => {
+    await onboarded();
+    const cases = [
+      [{ tuitions: [{ ...MATHS, start: '17:30', end: '17:00' }] }, 'end', 'Maths tuition has to end after it starts'],
+      [{ tuitions: [{ ...MATHS, start: '10:00', end: '11:00' }] }, 'start', 'Maths tuition on Monday clashes with school (07:45 to 13:45)'],
+      [{ tuitions: [{ ...MATHS, start: '04:00', end: '05:00' }] }, 'start', 'Maths tuition has to be between 05:00 and 22:00'],
+      [{ tuitions: [MATHS, { ...SCIENCE, days: [5], start: '17:00', end: '18:00' }] }, 'start', 'Maths tuition and Science tuition overlap on Friday'],
+      [{ tuitions: [{ ...MATHS, days: [] }] }, 'days', 'Pick the days for Maths tuition'],
+      [{ tuitions: [{ ...MATHS, days: [0] }] }, 'days', 'Use a whole number from 1 to 6'],
+      [{ tuitions: [{ ...MATHS, start: '4pm' }] }, 'start', 'Use HH:MM'],
+      [{ tuitions: Array.from({ length: 7 }, () => MATHS) }, 'tuitions', 'Pick at most 6'],
+      [{ schoolEnd: '16:30' }, 'start', 'Tuition on Monday clashes with school (07:45 to 16:30)'],
+      [{ schoolStart: '14:00' }, 'schoolEnd', 'School has to end after it starts'],
+    ];
+    for (const [patch, field, message] of cases) {
+      const error = await profileApi.update(patch).catch((caught) => caught);
+      expect({ field: Object.keys(error.fieldErrors?.() ?? {})[0], message: error.message }).toEqual({ field, message });
+    }
+    expect(await profileApi.get()).toMatchObject({ schoolEnd: 825, tuitions: [{ name: '', days: [1, 3, 5], start: 960, end: 1050 }] });
+  });
+
+  it('allows Saturday tuition straight after the half day, but not on a full school day', async () => {
+    const art = { name: 'Art class', days: [6], start: '12:45', end: '13:45' };
+    const { profile } = await profileApi.onboard({ ...ONBOARDING, tuitions: [art] });
+    expect(profile.tuitions).toEqual([{ name: 'Art class', days: [6], start: 765, end: 825 }]);
+    await expect(profileApi.update({ tuitions: [{ ...art, days: [1, 6] }] })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Art class on Monday clashes with school (07:45 to 13:45)',
+    });
+  });
+
+  it('reads plans saved with one set of tuition days and one time', async () => {
+    const restoreWith = async (oldFields) => {
+      await profileApi.loadDemo('Ravi');
+      const backup = JSON.parse(await backupApi.export());
+      const { tuitions: _replaced, ...profile } = backup.data.profile;
+      backup.data.profile = { ...profile, ...oldFields };
+      await backupApi.restore(JSON.stringify(backup));
+    };
+    await restoreWith({ tuitionDays: [3] });
+    expect(await tuitionRows(TODAY)).toEqual([{ label: 'Tuition', start: 960, end: 1050 }]);
+
+    await restoreWith({ tuitionDays: [3], tuitionStart: 1020, tuitionEnd: 1110 });
+    expect((await profileApi.get()).tuitions).toEqual([{ name: '', days: [3], start: 1020, end: 1110 }]);
+    expect(await tuitionRows(TODAY)).toEqual([{ label: 'Tuition', start: 1020, end: 1110 }]);
+
+    // The next save stores the list in place of the old fields.
+    await profileApi.update({ schoolEnd: '14:00' });
+    expect(read().profile).toMatchObject({ tuitions: [{ name: '', days: [3], start: 1020, end: 1110 }] });
+    expect(read().profile).not.toHaveProperty('tuitionDays');
+    expect(read().profile).not.toHaveProperty('tuitionStart');
   });
 });
 
@@ -182,9 +314,12 @@ describe('daily homework and self study slots', () => {
   it('every day has a Homework slot, and Test prep replaces Self study in the two weeks before a test', async () => {
     await onboarded(); // Periodic test 2 on Sat 28 Nov
     for (const { date } of await planApi.strip()) {
-      const slots = (await planApi.day(date)).rows.filter((row) => row.type === 'slot');
+      const day = await planApi.day(date);
+      const { slots } = day;
+      // The timeline itself only has fixed blocks and tasks.
+      expect(day.rows.every((row) => row.type === 'fixed' || row.type === 'task')).toBe(true);
       const beforeTest = date < '2026-11-28' && date >= '2026-11-14';
-      expect(slots.map((row) => row.kind)).toEqual(['homework', beforeTest ? 'exam' : 'study']);
+      expect(slots.map((slot) => slot.kind)).toEqual(['homework', beforeTest ? 'exam' : 'study']);
       if (beforeTest) expect(slots[1]).toMatchObject({ label: 'Test prep', detail: 'Periodic test 2', exams: [{ name: 'Periodic test 2', date: '2026-11-28' }] });
     }
     expect((await dashboardApi.today()).slots.map((slot) => slot.label)).toEqual(['Homework', 'Test prep']);
@@ -273,6 +408,21 @@ describe('unit tests update the calendar', () => {
     await examsApi.remove(exam.id);
     expect(slotsFor(exam.id)).toEqual([]);
     expect(read().tasks.find((task) => task.id === finished.id)).toMatchObject({ done: true, examId: null });
+  });
+
+  it('edits a test and keeps the slots already planned', async () => {
+    await onboarded();
+    const [exam] = await examsApi.upcoming();
+    const planned = read().tasks.length;
+    const saved = await examsApi.update(exam.id, { name: 'Periodic test 2 (moved)', date: '2026-12-02', chapterKeys: ['maths-1'] });
+    expect(saved).toMatchObject({ name: 'Periodic test 2 (moved)', date: '2026-12-02', chapterKeys: ['maths-1'], weight: 20, subject: 'maths' });
+    expect(read().tasks).toHaveLength(planned);
+
+    await expect(examsApi.update(exam.id, { date: TODAY })).rejects.toMatchObject({ code: 'EXAM_IN_PAST' });
+    await expect(examsApi.update(exam.id, { subject: 'science' })).rejects.toMatchObject({ code: 'UNKNOWN_CHAPTER' });
+    await expect(examsApi.update(exam.id, { subject: 'science', chapterKeys: ['maths-1'] })).rejects.toMatchObject({ code: 'UNKNOWN_CHAPTER' });
+    await expect(examsApi.update('missing', { name: 'Test' })).rejects.toMatchObject({ code: 'EXAM_NOT_FOUND' });
+    expect(await examsApi.update(exam.id, { subject: 'science', chapterKeys: ['science-1', 'science-1'] })).toMatchObject({ subject: 'science', chapterKeys: ['science-1'] });
   });
 });
 
@@ -453,5 +603,87 @@ describe('dashboards', () => {
     expect(progress.last7).toHaveLength(7);
     expect((await dashboardApi.habits()).calendar).toHaveLength(28);
     expect((await dashboardApi.sharing()).preview).toMatchObject({ streak: 0, coveragePercent: 0 });
+  });
+});
+
+describe('marks', () => {
+  const classTest = { subject: 'maths', name: 'Maths class test', date: '2026-11-20', weight: 10, chapterKeys: ['maths-1'] };
+
+  it('saves marks once a test has happened and shows them in Progress and the parent summary', async () => {
+    await onboarded();
+    const { exam } = await examsApi.create(classTest);
+    await expect(examsApi.setResult(exam.id, { score: 30, outOf: 40 })).rejects.toMatchObject({ code: 'EXAM_NOT_TAKEN' });
+
+    advanceDays(2); // Friday 20 Nov, the test day
+    expect(await examsApi.setResult(exam.id, { score: 32.5, outOf: 40 })).toMatchObject({ result: { score: 32.5, outOf: 40 } });
+    const progress = await dashboardApi.progress();
+    expect(progress.results[0]).toMatchObject({ id: exam.id, name: 'Maths class test', result: { score: 32.5, outOf: 40, percent: 81 } });
+    expect((await dashboardApi.sharing()).preview.recentMarks).toEqual([{ name: 'Maths class test', date: '2026-11-20', score: 32.5, outOf: 40, percent: 81 }]);
+
+    advanceDays(20); // two weeks on, the marks drop out of the weekly summary but stay in Progress
+    expect((await dashboardApi.sharing()).preview.recentMarks).toEqual([]);
+    const later = await dashboardApi.progress();
+    expect(later.results.map((test) => test.name)).toEqual(['Periodic test 2', 'Maths class test']);
+    expect(later.results.find((test) => test.id === exam.id).result.percent).toBe(81);
+
+    expect(await examsApi.setResult(exam.id, null)).toMatchObject({ result: null });
+    expect((await dashboardApi.progress()).results.find((test) => test.id === exam.id).result).toBeNull();
+  });
+
+  it('checks the marks', async () => {
+    await onboarded();
+    const { exam } = await examsApi.create(classTest);
+    advanceDays(3);
+    const cases = [
+      [{ score: 41, outOf: 40 }, 'score'],
+      [{ score: -1, outOf: 40 }, 'score'],
+      [{ score: 32.25, outOf: 40 }, 'score'],
+      [{ score: Number.NaN, outOf: 40 }, 'score'],
+      [{ score: 10, outOf: 0 }, 'outOf'],
+      [{ score: 10, outOf: 1001 }, 'outOf'],
+      [{ score: '10', outOf: 40 }, 'score'],
+    ];
+    for (const [result, field] of cases) {
+      const error = await examsApi.setResult(exam.id, result).catch((caught) => caught);
+      expect({ result, code: error.code, field: Object.keys(error.fieldErrors())[0] }).toEqual({ result, code: 'VALIDATION_ERROR', field });
+    }
+    await expect(examsApi.setResult('missing', { score: 1, outOf: 2 })).rejects.toMatchObject({ code: 'EXAM_NOT_FOUND' });
+  });
+});
+
+describe('adding a subject after setup', () => {
+  it('adds the subject with its chapters, ready for tests and plans', async () => {
+    await onboarded();
+    const added = await profileApi.addSubject({ name: ' Sanskrit ', chapters: ['Sandhi', ' Samasa ', 'Karaka'] });
+    expect(added).toEqual({ id: 'custom1', name: 'Sanskrit', color: '#5AC8FA', chapters: 3 });
+
+    const profile = await profileApi.get();
+    expect(profile.subjects.at(-1)).toBe('custom1');
+    expect(profile.subjectInfo.at(-1)).toEqual({ id: 'custom1', name: 'Sanskrit', color: '#5AC8FA', custom: true });
+    expect((await chaptersApi.list('custom1')).map(({ key, name, status }) => [key, name, status])).toEqual([
+      ['custom1-1', 'Sandhi', 'not'],
+      ['custom1-2', 'Samasa', 'not'],
+      ['custom1-3', 'Karaka', 'not'],
+    ]);
+    expect((await dashboardApi.progress()).subjects.at(-1)).toMatchObject({ name: 'Sanskrit', coverage: { total: 3 } });
+
+    const { planned } = await examsApi.create({ subject: 'custom1', name: 'Sanskrit test', date: '2026-11-27', weight: 10, chapterKeys: ['custom1-1', 'custom1-2'] });
+    expect(planned.added).toBeGreaterThan(0);
+    expect(await habitsApi.logFocus('custom1', 20)).toMatchObject({ subject: 'custom1', mins: 20 });
+  });
+
+  it('refuses a clashing name, an empty list and a seventh added subject', async () => {
+    await onboarded();
+    const cases = [
+      [{ name: 'maths', chapters: ['A'] }, 'DUPLICATE_SUBJECT'],
+      [{ name: 'Sanskrit', chapters: [] }, 'VALIDATION_ERROR'],
+      [{ name: '  ', chapters: ['A'] }, 'VALIDATION_ERROR'],
+      [{ name: 'Sanskrit', chapters: Array.from({ length: 41 }, (_, index) => `Chapter ${index + 1}`) }, 'VALIDATION_ERROR'],
+    ];
+    for (const [body, code] of cases) await expect(profileApi.addSubject(body)).rejects.toMatchObject({ code });
+
+    for (const name of ['Sanskrit', 'Odia', 'Computers', 'Music', 'Art', 'French']) await profileApi.addSubject({ name, chapters: ['One'] });
+    await expect(profileApi.addSubject({ name: 'German', chapters: ['One'] })).rejects.toMatchObject({ code: 'TOO_MANY_SUBJECTS' });
+    expect(new Set((await profileApi.get()).subjectInfo.map((subject) => subject.color)).size).toBe(11);
   });
 });

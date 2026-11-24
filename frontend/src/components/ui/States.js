@@ -49,7 +49,7 @@ export function OfflineBanner() {
   if (isOnline) return null;
   return (
     <View style={[styles.offline, { backgroundColor: colors.warning }]} accessibilityRole="alert">
-      <Text style={styles.offlineText}>You’re offline. Changes will fail until you reconnect.</Text>
+      <Text style={styles.offlineText}>You’re offline. Your plan still works; signing in and account changes need a connection.</Text>
     </View>
   );
 }

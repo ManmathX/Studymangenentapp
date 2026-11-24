@@ -123,7 +123,7 @@ function CheckIn({ checkin }) {
   );
 }
 
-/** Remounts the routines card when the saved ticks (or the day) change on the server. */
+/** Remounts the routines card when the saved ticks (or the day) change. */
 function routinesKey(data) {
   const ticks = (list) => list.map((item) => (item.done ? 1 : 0)).join('');
   return `${data.today}-${ticks(data.routines.morning)}-${ticks(data.routines.evening)}`;

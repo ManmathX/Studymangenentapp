@@ -1,9 +1,10 @@
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { persistNow } from './data/db';
 import { OfflineBanner } from './components/ui/States';
 import { Toast } from './components/ui/Toast';
 import { RootNavigator } from './navigation/RootNavigator';
@@ -17,7 +18,15 @@ function Shell() {
 
   useEffect(() => {
     bootstrap();
-    return watchNetwork();
+    // The plan is saved shortly after each change; save at once if the app is put away.
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') persistNow().catch(() => {});
+    });
+    const stopWatching = watchNetwork();
+    return () => {
+      appState.remove();
+      stopWatching();
+    };
   }, [bootstrap]);
 
   const navigationTheme = useMemo(() => {

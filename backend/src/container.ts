@@ -16,42 +16,17 @@ import {
   GoogleAuthLibraryVerifier,
   type GoogleIdTokenVerifier,
 } from './modules/auth/google.service.js';
+import { SmtpMailer, type Mailer } from './modules/auth/mailer.js';
 import { Argon2PasswordHasher, type PasswordHasher } from './modules/auth/password.service.js';
+import { MongoPasswordResetRepository } from './modules/auth/password-reset.repository.js';
+import { PasswordResetService } from './modules/auth/password-reset.service.js';
 import { MongoRefreshTokenRepository } from './modules/auth/refresh-token.repository.js';
 import { TokenService } from './modules/auth/token.service.js';
-import { chapterRoutes } from './modules/chapters/chapter.routes.js';
-import { MongoChapterRepository } from './modules/chapters/chapter.repository.js';
-import { ChapterService } from './modules/chapters/chapter.service.js';
-import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
-import { DashboardService } from './modules/dashboard/dashboard.service.js';
-import { examRoutes } from './modules/exams/exam.routes.js';
-import { MongoExamRepository } from './modules/exams/exam.repository.js';
-import { ExamService } from './modules/exams/exam.service.js';
-import { habitsRoutes } from './modules/habits/habits.routes.js';
-import { MongoHabitsRepository } from './modules/habits/habits.repository.js';
-import { HabitsService } from './modules/habits/habits.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
-import { homeworkRoutes } from './modules/homework/homework.routes.js';
-import { MongoHomeworkRepository } from './modules/homework/homework.repository.js';
-import { HomeworkService } from './modules/homework/homework.service.js';
-import { planRoutes } from './modules/planner/plan.routes.js';
-import { PlanService } from './modules/planner/plan.service.js';
-import { SchedulingService } from './modules/planner/scheduling.service.js';
-import { StudentContext } from './modules/planner/student-context.js';
-import { OnboardingService } from './modules/profile/onboarding.service.js';
-import { profileRoutes } from './modules/profile/profile.routes.js';
-import { MongoProfileRepository } from './modules/profile/profile.repository.js';
-import { ProfileService } from './modules/profile/profile.service.js';
-import { suggestionRoutes } from './modules/suggestions/suggestion.routes.js';
-import { MongoSuggestionRepository } from './modules/suggestions/suggestion.repository.js';
-import { SuggestionService } from './modules/suggestions/suggestion.service.js';
 import { catalogAdminRoutes } from './modules/syllabus/catalog-admin.routes.js';
 import { MongoCatalogRepository } from './modules/syllabus/catalog.repository.js';
 import { CatalogService } from './modules/syllabus/catalog.service.js';
 import { syllabusRoutes } from './modules/syllabus/syllabus.routes.js';
-import { taskRoutes } from './modules/tasks/task.routes.js';
-import { MongoTaskRepository } from './modules/tasks/task.repository.js';
-import { TaskService } from './modules/tasks/task.service.js';
 import { MongoUserRepository } from './modules/users/user.repository.js';
 
 export interface ContainerOptions {
@@ -62,6 +37,8 @@ export interface ContainerOptions {
   passwordHasher?: PasswordHasher;
   /** Overrides Google ID token checks (tests). Defaults to google-auth-library when configured. */
   googleVerifier?: GoogleIdTokenVerifier | null;
+  /** Overrides email sending (tests). Defaults to SMTP when SMTP_URL is set, otherwise none. */
+  mailer?: Mailer | null;
   startedAt?: Date;
   /** Reports whether a graceful shutdown has begun (readiness then fails). */
   isShuttingDown?: () => boolean;
@@ -73,7 +50,11 @@ export interface Container {
   authenticate: ReturnType<typeof createAuthenticate>;
 }
 
-/** Composition root: the only place that knows concrete implementations. */
+/**
+ * Composition root: the only place that knows concrete implementations.
+ * The server holds logins, sessions, the security audit log and the shared syllabus
+ * catalogue. Students' plans live only on their phones and never reach the server.
+ */
 export function buildContainer(options: ContainerOptions): Container {
   const { config, logger, redis } = options;
   const clock = options.clock ?? systemClock;
@@ -82,13 +63,6 @@ export function buildContainer(options: ContainerOptions): Container {
   const users = new MongoUserRepository();
   const refreshTokens = new MongoRefreshTokenRepository();
   const auditLogs = new MongoAuditRepository();
-  const profiles = new MongoProfileRepository();
-  const chapters = new MongoChapterRepository();
-  const exams = new MongoExamRepository();
-  const homework = new MongoHomeworkRepository();
-  const tasks = new MongoTaskRepository();
-  const suggestions = new MongoSuggestionRepository();
-  const habits = new MongoHabitsRepository();
 
   const audit = new AuditService(auditLogs, logger);
   const tokens = new TokenService({
@@ -107,7 +81,6 @@ export function buildContainer(options: ContainerOptions): Container {
   const auth = new AuthService(
     users,
     refreshTokens,
-    profiles,
     passwords,
     tokens,
     audit,
@@ -120,50 +93,23 @@ export function buildContainer(options: ContainerOptions): Container {
     google,
   );
   const catalog = new CatalogService(new MongoCatalogRepository());
-
-  const context = new StudentContext(profiles, clock);
-  const scheduling = new SchedulingService(tasks, homework, exams, chapters);
-  const profileService = new ProfileService(profiles, users, context);
-  const onboarding = new OnboardingService(
-    transactions,
-    context,
-    profileService,
-    profiles,
-    chapters,
-    exams,
-    homework,
-    tasks,
-    suggestions,
-    habits,
-    scheduling,
-    audit,
-    catalog,
-  );
-  const accounts = new AccountService(
+  const accounts = new AccountService(users, refreshTokens, passwords, transactions, audit);
+  const mailer =
+    options.mailer !== undefined
+      ? options.mailer
+      : config.SMTP_URL
+        ? new SmtpMailer(config.SMTP_URL, config.MAIL_FROM)
+        : null;
+  const resets = new PasswordResetService(
     users,
+    new MongoPasswordResetRepository(),
     refreshTokens,
     passwords,
-    onboarding,
-    transactions,
+    mailer,
     audit,
-  );
-  const plan = new PlanService(context, tasks, exams, scheduling);
-  const chapterService = new ChapterService(context, chapters, tasks, exams);
-  const taskService = new TaskService(context, tasks, homework, chapters, suggestions);
-  const suggestionService = new SuggestionService(context, suggestions, tasks, transactions);
-  const examService = new ExamService(context, exams, chapters);
-  const homeworkService = new HomeworkService(context, homework, tasks, transactions);
-  const habitsService = new HabitsService(context, habits, tasks, homework);
-  const dashboard = new DashboardService(
-    context,
-    tasks,
-    exams,
-    examService,
-    habits,
-    suggestions,
-    suggestionService,
-    chapterService,
-    users,
+    clock,
+    logger,
+    { codeTtlMinutes: config.PASSWORD_RESET_CODE_TTL_MINUTES, secret: config.JWT_ACCESS_SECRET },
   );
 
   const rateLimiters = createRateLimiters(
@@ -178,17 +124,8 @@ export function buildContainer(options: ContainerOptions): Container {
 
   const routes: Route[] = [
     ...healthRoutes(redis, options.startedAt ?? new Date(), options.isShuttingDown),
-    ...authRoutes(auth, accounts, rateLimiters.auth),
+    ...authRoutes(auth, accounts, resets, rateLimiters.auth),
     ...syllabusRoutes(catalog),
-    ...profileRoutes(profileService, onboarding),
-    ...dashboardRoutes(dashboard),
-    ...planRoutes(plan),
-    ...chapterRoutes(chapterService),
-    ...taskRoutes(taskService),
-    ...suggestionRoutes(suggestionService),
-    ...examRoutes(examService),
-    ...homeworkRoutes(homeworkService),
-    ...habitsRoutes(habitsService),
     ...adminRoutes(users, auditLogs, audit),
     ...catalogAdminRoutes(catalog, audit),
   ];

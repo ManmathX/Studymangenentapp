@@ -13,7 +13,7 @@ import {
   takeRestDay,
 } from './daily';
 import { habitsDashboard, progressDashboard, sharingDashboard, todayDashboard } from './dashboards';
-import { getProfile, onboard, seedDemo, syllabusClasses, syllabusFor, updateProfile, wipeAll } from './setup';
+import { addSubject, getProfile, onboard, seedDemo, updateProfile, wipeAll } from './setup';
 import {
   acceptAll,
   acceptSuggestion,
@@ -33,34 +33,33 @@ import {
   scheduleChapter,
   scheduleProposal,
   setChapterStatus,
+  setExamResult,
   skipSuggestion,
   skipTask,
   snoozeChapter,
   swapSuggestion,
   swapTask,
+  updateExam,
   updateTask,
 } from './study';
 
 /**
- * Every planner operation the screens use, grouped by feature. All data lives on this device;
- * each call returns a Promise and rejects with an AppError, so screens treat them like any
- * other async action.
+ * Every planner operation the screens use, grouped by feature. The student's data lives only
+ * on this device, never on the server; each call returns a Promise and rejects with an
+ * AppError, so screens treat them like any other async action. Only sign-in and the board's
+ * syllabus catalogue come from the server (see services/api/endpoints.js).
  */
 const op =
   (fn) =>
   (...args) =>
     Promise.resolve().then(() => fn(...args));
 
-export const syllabusApi = {
-  classes: op(syllabusClasses),
-  forClass: op(syllabusFor),
-};
-
 export const profileApi = {
   onboard: op(onboard),
   loadDemo: op(seedDemo),
   get: op(getProfile),
   update: op(updateProfile),
+  addSubject: op(addSubject),
   wipe: op(wipeAll),
 };
 
@@ -105,6 +104,8 @@ export const suggestionsApi = {
 export const examsApi = {
   upcoming: op(listExams),
   create: op(createExam),
+  update: op(updateExam),
+  setResult: op(setExamResult),
   remove: op(removeExam),
   seriesDraft: op(examSeriesDraft),
   createSeries: op(createExamSeries),

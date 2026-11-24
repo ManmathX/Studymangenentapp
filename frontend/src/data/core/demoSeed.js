@@ -1,6 +1,6 @@
 // Ported from backend/src/modules/profile/demo-seed.ts (types stripped). Keep both in step if the planner rules change.
 import { addDays } from './dates';
-import { catalogChapters, SUBJECT_IDS } from './syllabus';
+import { catalogChapters, SUBJECT_IDS, SUBJECTS } from './syllabus';
 /** Demo student: Class 9 CBSE with a realistic week of work, ported from the prototype. */
 const STATUS_BY_NAME = {
   'Number Systems': 'mastered',
@@ -220,12 +220,14 @@ export function buildDemoData(today, timezone) {
   }
   const profile = {
     cls: 9,
-    board: 'CBSE',
+    board: 'cbse',
+    boardName: 'CBSE',
     timezone,
     subjects: [...SUBJECT_IDS],
+    subjectInfo: SUBJECT_IDS.map((id) => ({ ...SUBJECTS[id], custom: false })),
     schoolStart: 465,
     schoolEnd: 825,
-    tuitionDays: [1, 3, 5],
+    tuitions: [{ name: 'Maths and Science tuition', days: [1, 3, 5], start: 960, end: 1050 }],
     dailyLimitMins: 180,
     weeklyGoalMins: 900,
     ageMode: 'deeper',

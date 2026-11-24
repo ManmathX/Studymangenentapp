@@ -1,6 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { SchoolDayFields } from '../../components/domain/SchoolDayFields';
 import { SuggestionCard } from '../../components/domain/SuggestionCard';
 import { Button } from '../../components/ui/Button';
 import { CheckRow, SegmentedControl, ToggleRow } from '../../components/ui/Controls';
@@ -9,12 +10,14 @@ import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layou
 import { AsyncBoundary } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
-import { profileActions, suggestionActions } from '../../services/actions';
+import { backupActions, profileActions, shareActions, suggestionActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useAuthStore } from '../../store/authStore';
 import { usePreferencesStore } from '../../store/preferencesStore';
 import { useTheme } from '../../theme/ThemeProvider';
-import { hours, initialOf, shortDate } from '../../utils/format';
+import { HOMEWORK_SLOT_OPTIONS } from '../../data/core/engine';
+import { clockTime, duration, hours, initialOf, shortDate } from '../../utils/format';
+import { schoolDayProblem, tuitionsFromForm, tuitionsToForm } from '../../utils/tuitions';
 
 const SHARE_ITEMS = [
   ['hours', 'Study hours against the goal'],
@@ -32,11 +35,14 @@ export function PrivacyScreen() {
         {(data) => (
           <>
             <ProfileCard data={data} />
+            <SchoolDay data={data} />
+            <DailySlots data={data} />
             <AppearanceSection />
             <AppMode data={data} />
             <ParentView data={data} />
-            <StudyGroups data={data} />
+            <ShareStreak streak={data.preview.streak} />
             {data.later.length ? <SavedForLater items={data.later} /> : null}
+            <YourData />
             <Account />
           </>
         )}
@@ -57,7 +63,7 @@ function ProfileCard({ data }) {
         Class {data.cls}, {data.boardName ?? data.board}
       </Muted>
       <View style={styles.badges}>
-        {['Under-18 profile', 'No ads', 'No public ranking', 'Friends by approval'].map((label, index) => (
+        {['Under-18 profile', 'No ads', 'No public ranking', 'Plan stays on this phone'].map((label, index) => (
           <View key={label} style={[styles.badge, { backgroundColor: colors.fill }]}>
             {index === 0 ? <Icon name="shield" size={12} color={colors.textSecondary} /> : null}
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{label}</Text>
@@ -65,6 +71,90 @@ function ProfileCard({ data }) {
         ))}
       </View>
     </Card>
+  );
+}
+
+/** Saved school hours and tuitions as form values. */
+const toForm = (schoolDay) => ({
+  schoolStart: clockTime(schoolDay.schoolStart),
+  schoolEnd: clockTime(schoolDay.schoolEnd),
+  tuitions: tuitionsToForm(schoolDay.tuitions),
+});
+/** Form values as the planner takes them; also used to tell whether anything changed. */
+const fromForm = (value) => ({ schoolStart: value.schoolStart, schoolEnd: value.schoolEnd, tuitions: tuitionsFromForm(value.tuitions) });
+
+function SchoolDay({ data }) {
+  // Starts again from the saved timings whenever they change (after saving or a restore).
+  return <SchoolDayEditor key={JSON.stringify(data.schoolDay)} schoolDay={data.schoolDay} />;
+}
+
+function SchoolDayEditor({ schoolDay }) {
+  const { colors } = useTheme();
+  const [value, setValue] = useState(() => toForm(schoolDay));
+  const [error, setError] = useState(null);
+  const changed = JSON.stringify(fromForm(value)) !== JSON.stringify(fromForm(toForm(schoolDay)));
+  const save = useAsyncAction(async () => {
+    const problem = schoolDayProblem(value);
+    setError(problem);
+    if (problem) return;
+    await profileActions.update(fromForm(value), 'Timings saved. Your days are planned around them now.');
+  });
+  const cancel = () => {
+    setError(null);
+    setValue(toForm(schoolDay));
+  };
+  return (
+    <Section title="School and tuition" bare footer="Study time is planned around these. Tasks already in your plan keep their days.">
+      <View style={{ gap: 12 }}>
+        <SchoolDayFields value={value} onChange={(patch) => setValue((current) => ({ ...current, ...patch }))} />
+        {error ? (
+          <Text style={{ color: colors.danger }} accessibilityRole="alert">
+            {error}
+          </Text>
+        ) : null}
+        {changed ? (
+          <View style={styles.row}>
+            <Button title="Save timings" variant="primary" onPress={save.execute} loading={save.pending} testID="save-timings" />
+            <Button title="Cancel" onPress={cancel} disabled={save.pending} />
+          </View>
+        ) : null}
+      </View>
+    </Section>
+  );
+}
+
+/** The Homework and study slots every day gets, and how long the Homework one is. */
+function DailySlots({ data }) {
+  const { colors } = useTheme();
+  return (
+    <Section
+      title="Daily study slots"
+      flush
+      footer="Every day has a Homework slot after school, then a study slot. In the two weeks before a test, the study slot becomes Test prep for it."
+    >
+      <View style={styles.padded}>
+        <Muted small>Homework time each day</Muted>
+        <SegmentedControl
+          label="Homework time each day"
+          value={data.homeworkMins}
+          onChange={(homeworkMins) => profileActions.update({ homeworkMins }, `Homework slot set to ${duration(homeworkMins)} a day.`)}
+          options={HOMEWORK_SLOT_OPTIONS.map((minutes) => ({ value: minutes, label: `${minutes} min` }))}
+        />
+      </View>
+      {data.todaySlots.map((slot) => (
+        <View key={slot.kind} testID={`today-slot-${slot.kind}`}>
+          <Divider />
+          <View style={styles.slot}>
+            <Text style={{ color: colors.text, fontWeight: '600', flex: 1 }}>
+              Today’s {slot.label.toLowerCase()} slot{slot.detail ? `: ${slot.detail}` : ''}
+            </Text>
+            <Muted small>
+              {clockTime(slot.start)} to {clockTime(slot.end)}
+            </Muted>
+          </View>
+        </View>
+      ))}
+    </Section>
   );
 }
 
@@ -106,7 +196,7 @@ function AppMode({ data }) {
       <Divider />
       <ToggleRow
         label="Exam-season mode"
-        hint="Mutes study groups and allows a longer, tighter plan."
+        hint="Allows 45 more minutes of study a day for a tighter plan before exams."
         value={data.examSeason}
         onValueChange={(examSeason) => profileActions.update({ examSeason }, examSeason ? 'Exam-season mode on.' : 'Exam-season mode off.')}
       />
@@ -122,25 +212,31 @@ function previewLines(data) {
   if (items.streak) lines.push(`Streak: ${preview.streak} days`);
   if (items.coverage) lines.push(`Syllabus covered: ${preview.coveragePercent}%`);
   if (items.tests && preview.nextExam) lines.push(`Next test: ${preview.nextExam.name}, ${shortDate(preview.nextExam.date)}`);
-  if (items.marks) lines.push('Marks: none entered yet');
+  if (items.marks) {
+    const marks = preview.recentMarks.map((test) => `${test.name} ${test.score}/${test.outOf} (${test.percent}%)`);
+    lines.push(marks.length ? `Marks: ${marks.join('; ')}` : 'Marks: none entered in the last two weeks');
+  }
   return lines;
 }
+
+const summaryMessage = (data, lines) => [`${data.name}’s study week`, ...lines.map((line) => `• ${line}`)].join('\n');
 
 function ParentView({ data }) {
   const { colors } = useTheme();
   const { sharing } = data;
   const lines = previewLines(data);
+  const send = useAsyncAction(() => shareActions.send(summaryMessage(data, lines), 'Summary sent.'));
   return (
     <Section
-      title="Parent view"
+      title="Parent summary"
       flush
-      footer={`${sharing.parent ? '' : 'Parent view is off. Nothing is shared. '}Parents can see a summary but can’t add or change tasks. Your plan is yours.`}
+      footer="Nothing is shared unless you send it. Parents see only this summary; they can’t add or change tasks. Your plan is yours."
     >
       <ToggleRow
         label="Weekly summary for a parent"
-        hint="A summary once a week. No task lists, check-ins or timers."
+        hint="Pick what’s in it, then send it yourself on WhatsApp, SMS or email."
         value={sharing.parent}
-        onValueChange={(parent) => profileActions.update({ sharing: { parent } }, parent ? 'Parent view on.' : 'Parent view off. Nothing is shared.')}
+        onValueChange={(parent) => profileActions.update({ sharing: { parent } }, parent ? 'Parent summary on.' : 'Parent summary off.')}
       />
       {sharing.parent ? (
         <>
@@ -149,7 +245,7 @@ function ParentView({ data }) {
             <CheckRow key={key} label={label} checked={sharing.items[key]} onToggle={() => profileActions.update({ sharing: { items: { [key]: !sharing.items[key] } } })} />
           ))}
           <View style={[styles.preview, { backgroundColor: colors.fill }]}>
-            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 6 }}>What your parent would see on Sunday evening</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 6 }}>This week’s summary</Text>
             {lines.length ? (
               lines.map((line) => (
                 <Text key={line} style={{ color: colors.textSecondary, lineHeight: 21 }}>
@@ -157,8 +253,11 @@ function ParentView({ data }) {
                 </Text>
               ))
             ) : (
-              <Muted small>Nothing selected, so no summary would be sent.</Muted>
+              <Muted small>Nothing selected, so there is nothing to send.</Muted>
             )}
+          </View>
+          <View style={styles.sendRow}>
+            <Button title="Send to a parent" variant="primary" onPress={send.execute} loading={send.pending} disabled={!lines.length} block testID="send-parent-summary" />
           </View>
         </>
       ) : null}
@@ -166,22 +265,23 @@ function ParentView({ data }) {
   );
 }
 
-function StudyGroups({ data }) {
-  const muted = data.examSeason;
+/** Shares only the streak, as a message to friends; nothing about it is stored anywhere else. */
+function ShareStreak({ streak }) {
+  const message =
+    streak > 0
+      ? `I’ve studied ${streak} day${streak === 1 ? '' : 's'} in a row with Study Planner. Can you beat my streak?`
+      : 'I’m starting a study streak with Study Planner. Want to keep one going with me?';
+  const share = useAsyncAction(() => shareActions.send(message, 'Streak shared.'));
   return (
-    <Section title="Study groups" flush footer="Never your hours, marks or tasks. No public leaderboards.">
-      <ToggleRow
-        label="Join study groups"
-        hint={muted ? 'Muted while exam-season mode is on.' : 'Friends see your streak only.'}
-        value={data.sharing.groups && !muted}
-        disabled={muted}
-        onValueChange={(groups) => profileActions.update({ sharing: { groups } }, groups ? 'Study groups preference saved.' : 'You left study groups.')}
+    <Section title="Share your streak" footer="Sends only your streak, from this phone. Your hours, marks and tasks stay private, and there are no public leaderboards.">
+      <Button
+        title={streak > 0 ? `Share my ${streak}-day streak` : 'Invite a friend to a streak'}
+        icon="spark"
+        onPress={share.execute}
+        loading={share.pending}
+        block
+        testID="share-streak"
       />
-      {data.sharing.groups && !muted ? (
-        <View style={styles.padded}>
-          <Muted small>Groups with classmates are coming soon. Your choice is saved, and only your streak will ever be shared.</Muted>
-        </View>
-      ) : null}
     </Section>
   );
 }
@@ -208,6 +308,22 @@ function SavedForLater({ items }) {
   );
 }
 
+function YourData() {
+  const save = useAsyncAction(backupActions.save);
+  const restore = useAsyncAction(backupActions.restore);
+  return (
+    <Section
+      title="Your data"
+      footer="Your plan, tests, homework and history are saved only on this phone, never on our server. Save a backup to keep a copy or to move to a new phone."
+    >
+      <View style={{ gap: 10 }}>
+        <Button title="Save a backup" onPress={save.execute} loading={save.pending} disabled={restore.pending} block testID="export-backup" />
+        <Button title="Restore from a backup" onPress={restore.execute} loading={restore.pending} disabled={save.pending} block testID="restore-backup" />
+      </View>
+    </Section>
+  );
+}
+
 function Account() {
   const navigation = useNavigation();
   const logout = useAuthStore((state) => state.logout);
@@ -222,7 +338,10 @@ function Account() {
     await profileActions.startOver();
   });
   return (
-    <Section title="Account" footer="Start over deletes your plan, homework, tests and history but keeps your login. Delete account removes everything, including the login.">
+    <Section
+      title="Account"
+      footer="Signing out keeps your plan on this phone for when you sign in again. Start over deletes your plan, homework, tests and history but keeps your login. Delete account removes your login and the plan on this phone."
+    >
       <View style={{ gap: 10 }}>
         <Button title="Sign out" icon="logout" onPress={signOut.execute} loading={signOut.pending} block />
         {hasPassword ? <Button title="Change password" icon="key" onPress={() => navigation.navigate('ChangePassword')} block testID="open-change-password" /> : null}
@@ -240,5 +359,8 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 8 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
   padded: { padding: 16, gap: 8 },
+  row: { flexDirection: 'row', gap: 10 },
   preview: { margin: 16, marginTop: 8, padding: 14, borderRadius: 12 },
+  sendRow: { paddingHorizontal: 16, paddingBottom: 16 },
+  slot: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
 });

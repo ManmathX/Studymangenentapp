@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { habitsApi } from '../services/api/endpoints';
+import { habitsApi } from '../data/api';
 import { duration } from '../utils/format';
 import { subjectInfo } from './subjectStore';
 import { toast } from './toastStore';
