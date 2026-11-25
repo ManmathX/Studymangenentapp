@@ -39,7 +39,10 @@ export function createApp(config: AppConfig, logger: Logger, container: Containe
   app.use(helmet());
   app.use(
     cors({
-      origin: (origin, callback) => callback(null, !origin || config.CORS_ORIGINS.includes(origin)),
+      // "*" allows any web origin. Safe because auth uses Bearer tokens, never cookies.
+      origin: config.CORS_ORIGINS.includes('*')
+        ? '*'
+        : (origin, callback) => callback(null, !origin || config.CORS_ORIGINS.includes(origin)),
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-Id'],
       exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy'],

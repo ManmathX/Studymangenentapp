@@ -33,7 +33,7 @@ describe('configuration', () => {
     const production = { ...base, NODE_ENV: 'production', CORS_ORIGINS: 'https://app.example' };
     expect(loadConfig(production).API_DOCS_ENABLED).toBe(false);
     expect(loadConfig({ ...production, API_DOCS_ENABLED: 'true' }).API_DOCS_ENABLED).toBe(true);
-    expect(() => loadConfig({ ...production, CORS_ORIGINS: '*' })).toThrow(/explicit origins/);
+    expect(loadConfig({ ...production, CORS_ORIGINS: '*' }).CORS_ORIGINS).toEqual(['*']);
     expect(() =>
       loadConfig({
         ...production,

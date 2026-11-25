@@ -112,7 +112,7 @@ Production checklist:
 - **Forgot-password email.** Set `SMTP_URL` (any SMTP provider, e.g. `smtps://user:pass@smtp.example.com:465`) and `MAIL_FROM`. Without them the app's "Forgot password?" answers that reset isn't set up. Codes have 6 digits, last `PASSWORD_RESET_CODE_TTL_MINUTES` (15), stop after 5 wrong tries, and are stored only as an HMAC.
 - **Secrets.** `JWT_ACCESS_SECRET` needs at least 32 random characters and must stay out of git. Staging and production refuse to start with the example value.
 - **More than one instance.** Set `REDIS_URL` so rate limits are shared across instances.
-- **CORS.** `CORS_ORIGINS` lists the web origins allowed to call the API. Native apps send no Origin header and are always allowed.
+- **CORS.** `CORS_ORIGINS` lists the web origins allowed to call the API, or `*` for any origin (safe because auth uses Bearer tokens, not cookies). Native apps send no Origin header and are always allowed.
 - **Health probes.** Use `GET /api/v1/health` for liveness and `GET /api/v1/health/ready` for readiness. Readiness returns 503 when MongoDB is down or the server is shutting down. Probes are never rate limited.
 - **Logs.** The API writes JSON lines to stdout, each with a request id; tokens, passwords and cookies are redacted.
 - **API docs.** Swagger UI is off in production unless `API_DOCS_ENABLED=true`. `npm run openapi:export` writes the spec to a file.

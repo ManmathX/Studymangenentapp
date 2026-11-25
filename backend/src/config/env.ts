@@ -80,9 +80,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   const env = parsed.data;
   const deployed = env.NODE_ENV === 'production' || env.NODE_ENV === 'staging';
-  if (deployed && env.CORS_ORIGINS.includes('*')) {
-    throw new Error(`CORS_ORIGINS must list explicit origins in ${env.NODE_ENV}`);
-  }
   if (env.SMTP_URL && !/^smtps?:\/\//.test(env.SMTP_URL)) {
     throw new Error('SMTP_URL must start with smtp:// or smtps://');
   }
