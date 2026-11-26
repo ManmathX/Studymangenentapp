@@ -10,7 +10,7 @@ export function HeaderAvatar() {
   const { colors } = useTheme();
   return (
     <Pressable
-      onPress={() => navigation.navigate('Privacy')}
+      onPress={() => navigation.navigate('Profile')}
       accessibilityRole="button"
       accessibilityLabel="Profile: appearance, privacy and account"
       hitSlop={8}

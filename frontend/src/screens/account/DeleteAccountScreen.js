@@ -48,7 +48,7 @@ export function DeleteAccountScreen() {
             </Text>
           ))}
         </Card>
-        <Muted small>Only want a fresh plan? Use “Start over with setup” instead. It keeps your login. Want to keep your plan? Save a backup in Settings first.</Muted>
+        <Muted small>Only want a fresh plan? Use “Start over with setup” instead. It keeps your login. Want to keep your plan? Save a backup in Profile first.</Muted>
         {hasPassword ? (
           <FormField control={control} name="password" rules={rules.loginPassword} label="Type your password to confirm" secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={onSubmit} />
         ) : (

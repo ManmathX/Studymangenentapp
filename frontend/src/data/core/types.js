@@ -20,4 +20,3 @@ export const EXAM_SERIES = {
   halfYearly: { label: 'Half-yearly', weight: 30, prepDays: 28 },
   final: { label: 'Final exam', weight: 50, prepDays: 42 },
 };
-export const EXAM_TYPES = ['unit', ...Object.keys(EXAM_SERIES)];

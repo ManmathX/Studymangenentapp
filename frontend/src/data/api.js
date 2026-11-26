@@ -21,9 +21,7 @@ import {
   addRevision,
   autoSchedule,
   createExam,
-  createExamSeries,
   createDatesheet,
-  examSeriesDraft,
   listChapters,
   listExams,
   moveTaskToBestDay,
@@ -108,8 +106,6 @@ export const examsApi = {
   update: op(updateExam),
   setResult: op(setExamResult),
   remove: op(removeExam),
-  seriesDraft: op(examSeriesDraft),
-  createSeries: op(createExamSeries),
   createDatesheet: op(createDatesheet),
 };
 

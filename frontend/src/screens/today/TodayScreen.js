@@ -30,7 +30,7 @@ function TodayContent({ data, navigation }) {
   return (
     <>
       <NextTest exam={data.nextExam} navigation={navigation} />
-      {data.examSeason ? <Banner tone="info" icon="moon" title="Exam-season mode is on" body="Study groups are muted and your daily limit is 45 min higher." /> : null}
+      {data.examSeason ? <Banner tone="info" icon="moon" title="Exam-season mode is on" body="Your daily limit is 45 min higher." /> : null}
       {data.suggestedBlocks.count ? (
         <Banner tone="info" icon="spark" title={`${plural(data.suggestedBlocks.count, 'study block')} suggested`} body="The planner found free time before your tests. You choose what stays.">
           <View style={styles.buttons}>
@@ -181,7 +181,7 @@ function WaitingSuggestions({ suggestions, today, laterCount }) {
   const busy = useAsyncAction(async (action, item) => action(item, today));
   if (!suggestions.length) return null;
   return (
-    <Section title="Waiting for you" meta={String(suggestions.length)} bare footer={`Nothing changes in your plan until you accept.${laterCount ? ` ${laterCount} saved for later in Settings.` : ''}`}>
+    <Section title="Waiting for you" meta={String(suggestions.length)} bare footer={`Nothing changes in your plan until you accept.${laterCount ? ` ${laterCount} saved for later in Profile.` : ''}`}>
       <View style={{ gap: 10 }}>
         {suggestions.map((item) => (
           <SuggestionCard

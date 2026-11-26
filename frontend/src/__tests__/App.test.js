@@ -63,9 +63,9 @@ async function setUp() {
   expect(await screen.findByTestId('today-screen')).toBeTruthy();
 }
 
-async function openSettings() {
+async function openProfile() {
   await fireEvent.press((await screen.findAllByLabelText(/^Profile/))[0]);
-  return screen.findByTestId('privacy-screen');
+  return screen.findByTestId('profile-screen');
 }
 
 function freshLaunch() {
@@ -145,7 +145,7 @@ describe('the app, with the plan kept on the phone', () => {
       expect(await screen.findByTestId(screenId)).toBeTruthy();
     }
 
-    await openSettings();
+    await openProfile();
     expect(await screen.findByText('Meera')).toBeTruthy();
     expect(screen.getByText(/saved only on this phone, never on our server/)).toBeTruthy();
 
@@ -160,7 +160,7 @@ describe('the app, with the plan kept on the phone', () => {
     expect((await savedPlanner(MEERA)).profile).toBeNull();
   });
 
-  it('adds several tuitions at setup and edits, removes and adds them later in Settings', async () => {
+  it('adds several tuitions at setup and edits, removes and adds them later in Profile', async () => {
     serverFor(MEERA);
     await render(<App />);
     await signIn(MEERA);
@@ -182,7 +182,7 @@ describe('the app, with the plan kept on the phone', () => {
     ]);
 
     // Later: Maths tuition runs to 18:00, Science stops, and a new Tuesday tuition starts.
-    await openSettings();
+    await openProfile();
     await fireEvent.press(screen.getByLabelText('More Maths tuition ends'));
     await fireEvent.press(screen.getByLabelText('More Maths tuition ends'));
     await press('remove-tuition-1');
@@ -258,7 +258,7 @@ describe('the app, with the plan kept on the phone', () => {
     await press('marks-save');
     expect(await screen.findByText('32.5/40 · 81%')).toBeTruthy();
 
-    await openSettings();
+    await openProfile();
     expect(await screen.findByText(/Marks: Maths class test 32\.5\/40 \(81%\)/)).toBeTruthy();
     await press('send-parent-summary');
     expect(Share.share).toHaveBeenLastCalledWith({ message: expect.stringMatching(/^Meera’s study week\n• [\s\S]*Marks: Maths class test 32\.5\/40 \(81%\)/) });
@@ -316,7 +316,7 @@ describe('the app, with the plan kept on the phone', () => {
     await signIn(MEERA);
     await press(await screen.findByTestId('onboarding-demo').then(() => 'onboarding-demo'));
     await screen.findByTestId('today-screen');
-    await openSettings();
+    await openProfile();
     await fireEvent.press(screen.getByText('Sign out'));
 
     // Ravi signs in on the same phone and starts with an empty plan.
@@ -333,7 +333,7 @@ describe('the app, with the plan kept on the phone', () => {
     expect(await screen.findByTestId('today-screen')).toBeTruthy();
     expect((await savedPlanner(MEERA)).profile.isDemo).toBe(true);
 
-    await openSettings();
+    await openProfile();
     await press('open-delete-account');
     await fireEvent.changeText(await screen.findByTestId('field-password'), 'correct-horse-9');
     await press('delete-account-submit');

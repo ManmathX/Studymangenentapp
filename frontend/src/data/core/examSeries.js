@@ -1,10 +1,10 @@
-import { addDays, diffDays, eachDay, weekday } from './dates';
+import { addDays, diffDays, eachDay } from './dates';
 import { priority } from './engine';
 import { examStepsFor, prepCapacity } from './examPlan';
 import { shortDate } from './shortDate';
 
 /**
- * Half-yearly and final exams: one paper per subject, on back-to-back days.
+ * Half-yearly and final exams on the datesheet: one paper per subject, usually on back-to-back days.
  *
  * The plan never parks on one chapter or one subject. Each day takes at most one step from
  * any chapter and, before anything else, one step from as many different subjects as fit.
@@ -16,21 +16,6 @@ import { shortDate } from './shortDate';
 const maxKey = (a, b) => (a > b ? a : b);
 const minKey = (a, b) => (a < b ? a : b);
 const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-
-/** Chapters a big exam covers by default: the first half of the syllabus for a half-yearly, all of it for a final. */
-export function defaultSeriesChapters(type, subjectChapters) {
-  const keys = subjectChapters.map((chapter) => chapter.key);
-  return type === 'final' ? keys : keys.slice(0, Math.ceil(keys.length / 2));
-}
-
-/** One date per paper from `first`, day after day, optionally skipping Sundays. */
-export function consecutiveDates(first, count, { skipSundays = true } = {}) {
-  const dates = [];
-  for (let date = first; dates.length < count; date = addDays(date, 1)) {
-    if (!(skipSundays && weekday(date) === 0)) dates.push(date);
-  }
-  return dates;
-}
 
 /** The whole-subject revision the evening before a paper uses the time left that evening: up to 90 minutes, never under 20. */
 const FINAL_REVISION_MAX = 90;

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
-import { CheckRow, Chip, ChipGroup, SegmentedControl } from '../../components/ui/Controls';
+import { CheckRow, Chip, ChipGroup } from '../../components/ui/Controls';
 import { FormField } from '../../components/ui/Field';
 import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
@@ -14,36 +14,17 @@ import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { addDays } from '../../utils/format';
 import { rules } from '../../utils/validation';
-import { ExamSeriesForm } from './ExamSeriesForm';
 
 const WEIGHTS = [5, 10, 20, 30, 50, 80];
 const DAYS_AHEAD = 60;
 
-const TEST_KINDS = [
-  { value: 'unit', label: 'Unit test' },
-  { value: 'halfYearly', label: 'Half-yearly' },
-  { value: 'final', label: 'Final exam' },
-];
-
-/**
- * New test, or editing one when opened with `{ exam }` (the EditExam route). A new test can be
- * a unit test, or a half-yearly or final exam with one paper per subject.
- */
-export function NewExamScreen({ navigation, route }) {
+/** Edits one paper on the datesheet (opened with `{ exam }`). New exams are added from the datesheet. */
+export function EditExamScreen({ navigation, route }) {
   const profile = useResource(resources.profile);
-  const exam = route?.params?.exam ?? null;
-  const [kind, setKind] = useState('unit');
-  const done = () => navigation.goBack();
+  const exam = route.params.exam;
   return (
     <Screen>
-      <AsyncBoundary resource={profile}>
-        {(data) => (
-          <View style={{ gap: 16 }}>
-            {exam ? null : <SegmentedControl label="Kind of test" value={kind} onChange={setKind} options={TEST_KINDS} />}
-            {exam || kind === 'unit' ? <ExamForm profile={data} exam={exam} onDone={done} /> : <ExamSeriesForm key={kind} profile={data} type={kind} onDone={done} />}
-          </View>
-        )}
-      </AsyncBoundary>
+      <AsyncBoundary resource={profile}>{(data) => <ExamForm profile={data} exam={exam} onDone={() => navigation.goBack()} />}</AsyncBoundary>
     </Screen>
   );
 }
@@ -58,36 +39,32 @@ function pickableDays(today, current) {
   return days;
 }
 
-export function ExamForm({ profile, exam = null, onDone, submit }) {
+function ExamForm({ profile, exam, onDone }) {
   const { colors } = useTheme();
   const subjectOf = useSubjectInfo();
   const today = profile.today;
-  const editing = Boolean(exam);
-  const days = useMemo(() => pickableDays(today, exam?.date), [today, exam?.date]);
+  const days = useMemo(() => pickableDays(today, exam.date), [today, exam.date]);
   const {
     control,
     handleSubmit,
     setValue,
     formState: { isSubmitting, errors },
   } = useForm({
-    defaultValues: exam
-      ? { name: exam.name, subject: exam.subject, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys }
-      : { name: '', subject: profile.subjects[0], date: addDays(today, 10), weight: 20, chapterKeys: [] },
+    defaultValues: { name: exam.name, subject: exam.subject, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys },
   });
   const subject = useWatch({ control, name: 'subject' });
   const chapters = useResource(resources.chapters(subject));
-  const weights = exam && !WEIGHTS.includes(exam.weight) ? [...WEIGHTS, exam.weight].sort((a, b) => a - b) : WEIGHTS;
+  const weights = !WEIGHTS.includes(exam.weight) ? [...WEIGHTS, exam.weight].sort((a, b) => a - b) : WEIGHTS;
 
   const onSubmit = handleSubmit(async (values) => {
     const body = { ...values, name: values.name.trim() };
-    const save = submit ?? (editing ? (changes) => examActions.update(exam.id, changes) : examActions.create);
-    const saved = await save(body);
+    const saved = await examActions.update(exam.id, body);
     if (saved) onDone();
   });
 
   return (
     <View style={{ gap: 16 }}>
-      <FormField control={control} name="name" rules={rules.title('Give the test a name.')} label="Test name" placeholder={`${subjectOf(subject).name} unit test`} />
+      <FormField control={control} name="name" rules={rules.title('Give the test a name.')} label="Paper name" placeholder={`${subjectOf(subject).name} unit test`} />
       <Section title="Subject" bare>
         <Controller
           control={control}
@@ -157,8 +134,8 @@ export function ExamForm({ profile, exam = null, onDone, submit }) {
           {errors.chapterKeys.message}
         </Text>
       ) : null}
-      {editing ? <Muted small>Study blocks already in your plan stay. Use “Schedule from syllabus” in Plan to add more.</Muted> : null}
-      <Button title={editing ? 'Save changes' : 'Add test'} variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="exam-submit" />
+      <Muted small>Study blocks already in your plan stay. Use “Schedule from syllabus” in Plan to add more.</Muted>
+      <Button title="Save changes" variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="exam-submit" />
     </View>
   );
 }

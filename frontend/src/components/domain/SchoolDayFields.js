@@ -21,7 +21,7 @@ const STEP_MINUTES = 15;
 /**
  * School hours and the student's tuitions, each with its own name, days and times.
  * `value` is `{ schoolStart, schoolEnd, tuitions: [{ key, name, days, start, end }] }` with
- * "HH:MM" times; `onChange` gets only the fields that changed. Used at setup and in Settings.
+ * "HH:MM" times; `onChange` gets only the fields that changed. Used at setup and in Profile.
  */
 export function SchoolDayFields({ value, onChange }) {
   const shiftSchool = (field, delta) => onChange({ [field]: minutesToTime(timeToMinutes(value[field]) + delta) });

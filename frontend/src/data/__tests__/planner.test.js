@@ -426,35 +426,42 @@ describe('unit tests update the calendar', () => {
   });
 });
 
-describe('half-yearly and final exams', () => {
-  const papersFor = (exams) => exams.map(({ subject, date, chapterKeys }) => ({ subject, date, chapterKeys }));
-
-  it('drafts one paper per subject on back-to-back days with the usual chapters ticked', async () => {
-    await onboarded();
-    const draft = await examsApi.seriesDraft('halfYearly', '2026-12-11');
-    expect(draft.map((paper) => [paper.subject, paper.date])).toEqual([
-      ['maths', '2026-12-11'],
-      ['science', '2026-12-12'],
-      ['sst', '2026-12-14'], // Sunday skipped
-      ['english', '2026-12-15'],
-      ['hindi', '2026-12-16'],
-    ]);
-    const maths = draft[0];
-    expect(maths.name).toBe('Half-yearly: Maths');
-    expect(maths.chapterKeys).toEqual(maths.chapters.slice(0, Math.ceil(maths.chapters.length / 2)).map((chapter) => chapter.key));
-    const final = await examsApi.seriesDraft('final', '2027-02-22', false);
-    expect(final[0].chapterKeys).toHaveLength(final[0].chapters.length);
-    await expect(examsApi.seriesDraft('weekly', '2027-02-22')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+describe('the datesheet', () => {
+  const SUBJECT_NAMES = { maths: 'Maths', science: 'Science', sst: 'Social Science', english: 'English', hindi: 'Hindi' };
+  const DATES = ['2026-12-14', '2026-12-15', '2026-12-16', '2026-12-17', '2026-12-18'];
+  const firstHalf = (subject) => {
+    const own = read().chapters.filter((chapter) => chapter.subject === subject);
+    return own.slice(0, Math.ceil(own.length / 2)).map((chapter) => chapter.key);
+  };
+  const halfYearly = () => ({
+    series: 'Half-yearly',
+    kind: 'halfYearly',
+    papers: Object.keys(SUBJECT_NAMES).map((subject, index) => ({ subject, name: `Half-yearly: ${SUBJECT_NAMES[subject]}`, date: DATES[index], weight: 30, chapterKeys: firstHalf(subject) })),
   });
 
-  it('adds every paper and plans a mixed timetable on the calendar', async () => {
+  it('adds a unit test as one group and plans each paper like a single test', async () => {
     await onboarded();
-    const draft = await examsApi.seriesDraft('halfYearly', '2026-12-14');
-    const { exams, planned } = await examsApi.createSeries({ type: 'halfYearly', papers: papersFor(draft) });
+    const { exams, planned } = await examsApi.createDatesheet({
+      series: 'UT 1',
+      kind: 'unit',
+      papers: [
+        { subject: 'maths', name: 'UT 1: Maths', date: '2026-12-01', chapterKeys: ['maths-1'] },
+        { subject: 'science', name: 'UT 1: Science', date: '2026-12-02', chapterKeys: ['science-1'] },
+      ],
+    });
+    expect(exams).toHaveLength(2);
+    expect(exams[0]).toMatchObject({ type: 'unit', kind: 'unit', seriesName: 'UT 1', weight: 20 });
+    expect(exams[0]).not.toHaveProperty('prepFrom');
+    expect(new Set(exams.map((exam) => exam.seriesId)).size).toBe(1);
+    expect(planned.added).toBeGreaterThan(0);
+  });
+
+  it('plans a half-yearly as one mixed timetable starting weeks before the first paper', async () => {
+    await onboarded();
+    const { exams, planned } = await examsApi.createDatesheet(halfYearly());
     expect(exams).toHaveLength(5);
     expect(new Set(exams.map((exam) => exam.seriesId)).size).toBe(1);
-    expect(exams[0]).toMatchObject({ type: 'halfYearly', seriesName: 'Half-yearly', weight: 30, prepFrom: '2026-11-16' });
-    expect(planned).toMatchObject({ papers: 5, reason: null });
+    expect(exams[0]).toMatchObject({ type: 'halfYearly', kind: 'halfYearly', seriesName: 'Half-yearly', weight: 30, prepFrom: '2026-11-16' });
     expect(planned.added).toBeGreaterThan(40);
 
     const slots = read().tasks.filter((task) => exams.some((exam) => exam.id === task.examId));
@@ -468,32 +475,39 @@ describe('half-yearly and final exams', () => {
 
   it('shows Test prep for the half-yearly on the calendar while it is coming up', async () => {
     await profileApi.onboard({ ...ONBOARDING, exams: [] });
-    const draft = await examsApi.seriesDraft('halfYearly', '2026-12-14');
-    await examsApi.createSeries({ type: 'halfYearly', papers: papersFor(draft) });
+    await examsApi.createDatesheet(halfYearly());
     expect((await planApi.day(TODAY)).slots[1]).toMatchObject({ kind: 'exam', label: 'Test prep', detail: 'Half-yearly' });
     const strip = await planApi.strip();
     expect(strip.at(-1).date).toBe('2026-12-18');
     expect(strip.filter((day) => day.hasExam)).toHaveLength(5);
   });
 
-  it('uses the default chapters when none are sent, and checks every paper', async () => {
+  it('checks the exam and every paper', async () => {
     await onboarded();
-    const { exams } = await examsApi.createSeries({ type: 'final', papers: [{ subject: 'maths', date: '2027-02-22' }] });
-    expect(exams[0].chapterKeys.length).toBe(read().chapters.filter((chapter) => chapter.subject === 'maths').length);
+    const paper = { subject: 'maths', name: 'Final: Maths', date: '2027-02-22', chapterKeys: ['maths-1'] };
     const bad = [
-      [{ type: 'weekly', papers: [{ subject: 'maths', date: '2027-02-22' }] }, 'VALIDATION_ERROR'],
-      [{ type: 'final', papers: [] }, 'VALIDATION_ERROR'],
-      [{ type: 'final', papers: [{ subject: 'maths', date: TODAY }] }, 'EXAM_IN_PAST'],
-      [{ type: 'final', papers: [{ subject: 'maths', date: '2027-02-22' }, { subject: 'maths', date: '2027-02-23' }] }, 'DUPLICATE_PAPER'],
-      [{ type: 'final', papers: [{ subject: 'maths', date: '2027-02-22', chapterKeys: ['science-1'] }] }, 'UNKNOWN_CHAPTER'],
+      [{ series: 'Final', kind: 'weekly', papers: [paper] }, 'VALIDATION_ERROR'],
+      [{ series: '', kind: 'final', papers: [paper] }, 'VALIDATION_ERROR'],
+      [{ series: 'Final', kind: 'final', papers: [] }, 'VALIDATION_ERROR'],
+      [{ series: 'Final', kind: 'final', papers: [{ ...paper, date: TODAY }] }, 'EXAM_IN_PAST'],
+      [{ series: 'Final', kind: 'final', papers: [paper, paper] }, 'DUPLICATE_PAPER'],
+      [{ series: 'Final', kind: 'final', papers: [{ ...paper, chapterKeys: ['science-1'] }] }, 'UNKNOWN_CHAPTER'],
     ];
-    for (const [input, code] of bad) await expect(examsApi.createSeries(input)).rejects.toMatchObject({ code });
+    for (const [input, code] of bad) await expect(examsApi.createDatesheet(input)).rejects.toMatchObject({ code });
+  });
+
+  it('keeps setup datesheet papers grouped and plans them the same way', async () => {
+    const exams = halfYearly().papers.map((paper) => ({ ...paper, series: 'Half-yearly', kind: 'halfYearly', chapterKeys: [`${paper.subject}-1`] }));
+    await profileApi.onboard({ ...ONBOARDING, exams });
+    const saved = read().exams;
+    expect(saved).toHaveLength(5);
+    expect(new Set(saved.map((exam) => exam.seriesId)).size).toBe(1);
+    expect(saved[0]).toMatchObject({ type: 'halfYearly', seriesName: 'Half-yearly', prepFrom: '2026-11-16' });
   });
 
   it('removing one paper removes only that paper and its unfinished slots', async () => {
     await onboarded();
-    const draft = await examsApi.seriesDraft('halfYearly', '2026-12-14');
-    const { exams } = await examsApi.createSeries({ type: 'halfYearly', papers: papersFor(draft) });
+    const { exams } = await examsApi.createDatesheet(halfYearly());
     await examsApi.remove(exams[0].id);
     expect(read().tasks.some((task) => task.examId === exams[0].id)).toBe(false);
     expect(read().tasks.some((task) => task.examId === exams[1].id)).toBe(true);

@@ -19,10 +19,6 @@ export const resources = {
   planStrip: { key: 'planStrip', load: () => planApi.strip(14) },
   planDay: (date) => ({ key: `planDay:${date}`, load: () => planApi.day(date) }),
   exams: { key: 'exams', load: examsApi.upcoming },
-  examSeriesDraft: (type, firstDate, skipSundays) => ({
-    key: `examSeriesDraft:${type}:${firstDate}:${skipSundays}`,
-    load: () => examsApi.seriesDraft(type, firstDate, skipSundays),
-  }),
   homeworkSummary: { key: 'homeworkSummary', load: homeworkApi.summary },
   homeworkOpen: { key: 'homeworkOpen', load: () => homeworkApi.page('open', 1, 100).then((page) => page.data) },
   bag: { key: 'bag', load: () => habitsApi.bag() },

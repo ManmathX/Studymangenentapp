@@ -1,7 +1,7 @@
-import { addDays, diffDays, eachDay } from '../dates';
+import { addDays, diffDays, eachDay, weekday } from '../dates';
 import { DayLoad } from '../engine';
 import { prepCapacity } from '../examPlan';
-import { consecutiveDates, defaultSeriesChapters, planSeriesSlots } from '../examSeries';
+import { planSeriesSlots } from '../examSeries';
 import { catalogChapters } from '../syllabus';
 import { EXAM_SERIES } from '../types';
 
@@ -16,20 +16,22 @@ function classChapters() {
   });
 }
 
+/** One paper per subject on back-to-back days (no Sundays); a half-yearly covers the first half of each syllabus, a final all of it. */
 function halfYearly(firstPaper = '2026-12-14', chapters = classChapters(), type = 'halfYearly') {
   const subjects = ['maths', 'science', 'sst', 'english', 'hindi'];
-  const dates = consecutiveDates(firstPaper, subjects.length);
-  return subjects.map((subject, index) => ({
-    id: `paper-${subject}`,
-    subject,
-    name: `${EXAM_SERIES[type].label}: ${subject}`,
-    date: dates[index],
-    weight: EXAM_SERIES[type].weight,
-    chapterKeys: defaultSeriesChapters(
-      type,
-      chapters.filter((chapter) => chapter.subject === subject),
-    ),
-  }));
+  const dates = [];
+  for (let date = firstPaper; dates.length < subjects.length; date = addDays(date, 1)) if (weekday(date) !== 0) dates.push(date);
+  return subjects.map((subject, index) => {
+    const own = chapters.filter((chapter) => chapter.subject === subject).map((chapter) => chapter.key);
+    return {
+      id: `paper-${subject}`,
+      subject,
+      name: `${EXAM_SERIES[type].label}: ${subject}`,
+      date: dates[index],
+      weight: EXAM_SERIES[type].weight,
+      chapterKeys: type === 'final' ? own : own.slice(0, Math.ceil(own.length / 2)),
+    };
+  });
 }
 
 function plan({ papers = halfYearly(), chapters = classChapters(), studyProfile = profile, load = new DayLoad() } = {}) {
@@ -38,19 +40,6 @@ function plan({ papers = halfYearly(), chapters = classChapters(), studyProfile 
 }
 
 const chapterBlocks = (blocks) => blocks.filter((block) => block.chapterKey);
-
-describe('half-yearly and final exam dates and chapters', () => {
-  it('puts papers on back-to-back days, skipping Sundays unless asked not to', () => {
-    expect(consecutiveDates('2026-12-11', 4)).toEqual(['2026-12-11', '2026-12-12', '2026-12-14', '2026-12-15']);
-    expect(consecutiveDates('2026-12-11', 3, { skipSundays: false })).toEqual(['2026-12-11', '2026-12-12', '2026-12-13']);
-  });
-
-  it('covers the first half of the syllabus for a half-yearly and all of it for a final', () => {
-    const maths = classChapters().filter((chapter) => chapter.subject === 'maths');
-    expect(defaultSeriesChapters('halfYearly', maths)).toEqual(maths.slice(0, Math.ceil(maths.length / 2)).map((chapter) => chapter.key));
-    expect(defaultSeriesChapters('final', maths)).toHaveLength(maths.length);
-  });
-});
 
 describe('half-yearly and final exam plan', () => {
   it('plans every chapter before its paper, in order, with revision in the second half', () => {

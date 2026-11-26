@@ -152,7 +152,7 @@ export function habitsDashboard() {
   };
 }
 
-/** Settings screen: profile, the parent-summary preview, and suggestions saved for later. */
+/** Profile screen: who you are, the parent-summary preview, and suggestions saved for later. */
 export function sharingDashboard() {
   const data = read();
   const ctx = studentDay(data);

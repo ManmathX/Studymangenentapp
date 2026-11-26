@@ -68,7 +68,7 @@ export function SchoolDayStep() {
       footer={<Button title="Build my plan" icon="spark" variant="primary" block onPress={build.execute} loading={build.pending} testID="build-plan" />}
     >
       <SchoolDayFields value={draft} onChange={update} />
-      <Muted small>You can change these later in Settings.</Muted>
+      <Muted small>You can change these later in Profile.</Muted>
       <FieldHeading>Most study time on a school day</FieldHeading>
       <SegmentedControl
         label="Daily study limit"

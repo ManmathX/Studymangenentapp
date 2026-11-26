@@ -14,7 +14,7 @@ import { clock } from './clock';
 import { emptyData, read, replaceAll, write } from './db';
 import { badRequest, conflict, invalidField } from './errors';
 import { copy, insertTasks, localToday, newId, studentDay, subjectInfoOf, upsertLog } from './queries';
-import { datesheetLabel, planForExam } from './study';
+import { datesheetLabel, datesheetPapers, planPapers } from './study';
 import { bool, dateKey, intIn, list, oneOf, text, timeOfDay, unique } from './validate';
 
 const toMinutes = (time) => {
@@ -310,14 +310,19 @@ export function onboard(body) {
       revisions: taught.has(chapter.key) ? 1 : 0,
       snoozedUntil: null,
     }));
-    const seriesIds = new Map();
-    for (const exam of exams) if (exam.seriesName && !seriesIds.has(exam.seriesName)) seriesIds.set(exam.seriesName, newId(draft));
-    draft.exams = exams.map((exam) => ({ id: newId(draft), type: 'unit', ...(exam.seriesName ? { seriesId: seriesIds.get(exam.seriesName) } : {}), ...exam }));
-    // Each test fills the calendar with self study, homework and revision slots, soonest test first.
-    const ctx = { profile, today, start };
-    const plans = [...draft.exams].sort((a, b) => (a.date < b.date ? -1 : 1)).map((exam) => planForExam(draft, exam, ctx));
-    const firstDates = plans.map((plan) => plan.firstDate).filter(Boolean).sort();
-    return { added: plans.reduce((sum, plan) => sum + plan.added, 0), firstDate: firstDates[0] ?? null };
+    // Papers from the same exam on the datesheet are stored together, as when added later.
+    const groups = new Map();
+    for (const { seriesName, kind, ...paper } of exams) {
+      const key = seriesName ?? `single-${groups.size}`;
+      if (!groups.has(key)) groups.set(key, { label: seriesName ? { seriesName, kind } : null, papers: [] });
+      groups.get(key).papers.push(paper);
+    }
+    draft.exams = [...groups.values()].flatMap(({ label, papers }) =>
+      label ? datesheetPapers(draft, label, papers) : papers.map((paper) => ({ id: newId(draft), type: 'unit', ...paper })),
+    );
+    // Each test fills the calendar with self study, homework and revision slots.
+    const planned = planPapers(draft, draft.exams, { profile, today, start });
+    return { added: planned.added, firstDate: planned.firstDate };
   });
   return { profile: getProfile(), planned: result.added, firstDate: result.firstDate };
 }

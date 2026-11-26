@@ -28,10 +28,11 @@ const SHARE_ITEMS = [
 ];
 
 
-export function PrivacyScreen() {
+/** Profile: who you are, school timings, appearance, sharing, your data and account. Opened from the header avatar. */
+export function ProfileScreen() {
   const sharing = useResource(resources.sharing);
   return (
-    <Screen refreshing={sharing.isRefreshing} onRefresh={sharing.refresh} testID="privacy-screen">
+    <Screen refreshing={sharing.isRefreshing} onRefresh={sharing.refresh} testID="profile-screen">
       <AsyncBoundary resource={sharing}>
         {(data) => (
           <>

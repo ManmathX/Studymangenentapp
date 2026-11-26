@@ -11,11 +11,11 @@ const Stack = createNativeStackNavigator();
 
 /* Modal screens load on first use to keep start-up light. */
 const lazy = {
-  Privacy: () => require('../screens/sharing/PrivacyScreen').PrivacyScreen,
+  Profile: () => require('../screens/profile/ProfileScreen').ProfileScreen,
   Syllabus: () => require('../screens/modals/SyllabusScreen').SyllabusScreen,
   ScheduleChapter: () => require('../screens/modals/ScheduleChapterScreen').ScheduleChapterScreen,
   NewHomework: () => require('../screens/modals/NewHomeworkScreen').NewHomeworkScreen,
-  NewExam: () => require('../screens/modals/NewExamScreen').NewExamScreen,
+  EditExam: () => require('../screens/modals/EditExamScreen').EditExamScreen,
   NewDatesheet: () => require('../screens/modals/NewDatesheetScreen').NewDatesheetScreen,
   ChangePassword: () => require('../screens/account/ChangePasswordScreen').ChangePasswordScreen,
   DeleteAccount: () => require('../screens/account/DeleteAccountScreen').DeleteAccountScreen,
@@ -40,7 +40,7 @@ export function RootNavigator() {
 
   if (!onboarded) {
     return (
-      <Stack.Navigator screenOptions={{ headerBackTitle: 'Back', title: '' , headerShadowVisible: false }}>
+      <Stack.Navigator screenOptions={{ headerBackTitle: 'Back', title: '', headerShadowVisible: false }}>
         <Stack.Screen name="Welcome" component={WelcomeStep} options={{ headerShown: false }} />
         <Stack.Screen name="ClassStep" component={ClassStep} />
         <Stack.Screen name="SubjectsStep" component={SubjectsStep} />
@@ -54,13 +54,12 @@ export function RootNavigator() {
   return (
     <Stack.Navigator>
       <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-      <Stack.Screen name="Privacy" getComponent={lazy.Privacy} options={{ title: 'Profile', headerBackTitle: 'Back' }} />
+      <Stack.Screen name="Profile" getComponent={lazy.Profile} options={{ title: 'Profile', headerBackTitle: 'Back' }} />
       <Stack.Group screenOptions={{ presentation: 'modal' }}>
         <Stack.Screen name="Syllabus" getComponent={lazy.Syllabus} options={{ title: 'Syllabus' }} />
         <Stack.Screen name="ScheduleChapter" getComponent={lazy.ScheduleChapter} options={{ title: 'Schedule' }} />
         <Stack.Screen name="NewHomework" getComponent={lazy.NewHomework} options={{ title: 'New Homework' }} />
-        <Stack.Screen name="NewExam" getComponent={lazy.NewExam} options={{ title: 'New Test' }} />
-        <Stack.Screen name="EditExam" getComponent={lazy.NewExam} options={{ title: 'Edit Test' }} />
+        <Stack.Screen name="EditExam" getComponent={lazy.EditExam} options={{ title: 'Edit Paper' }} />
         <Stack.Screen name="NewDatesheet" getComponent={lazy.NewDatesheet} options={{ title: 'Add to Datesheet' }} />
         <Stack.Screen name="ChangePassword" getComponent={lazy.ChangePassword} options={{ title: 'Change Password' }} />
         <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete Account' }} />

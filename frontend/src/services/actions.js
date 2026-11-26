@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { backupApi, chaptersApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, tasksApi } from '../data/api';
+import { backupApi, chaptersApi, examsApi, habitsApi, homeworkApi, profileApi, suggestionsApi, tasksApi } from '../data/api';
 import { localToday } from '../data/queries';
 import { useAuthStore } from '../store/authStore';
 import { useResourceStore } from '../store/resourceStore';
@@ -47,20 +47,9 @@ export const suggestionActions = {
     run(() => suggestionsApi.accept(item.id), {
       success: item.kind === 'move' ? `Moved to ${dayName(item.date, today)}.` : `Added to ${dayName(item.date, today)}.`,
     }),
-  later: (item) => run(() => suggestionsApi.later(item.id), { success: 'Saved for later. Find it in Settings.' }),
+  later: (item) => run(() => suggestionsApi.later(item.id), { success: 'Saved for later. Find it in Profile.' }),
   skip: (item) => run(() => suggestionsApi.skip(item.id), { success: 'Skipped. Your plan stays as it is.' }),
   swap: (item, today) => run(() => suggestionsApi.swap(item.id), { success: (updated) => `Swapped to ${dayName(updated.date, today)}.` }),
-};
-
-export const planActions = {
-  autoSchedule: () =>
-    run(planApi.autoSchedule, {
-      success: (result) =>
-        result.added
-          ? `${result.added} study block${result.added > 1 ? 's' : ''} suggested. Accept the ones you want.`
-          : 'Every chapter before your tests already has a slot.',
-    }),
-  acceptAll: () => run(planApi.acceptAll, { success: (result) => `${result.accepted} blocks added to your plan.` }),
 };
 
 export const chapterActions = {
@@ -80,13 +69,6 @@ export const chapterActions = {
 const slotsPlanned = (count) => (count ? ` ${count} study slot${count > 1 ? 's' : ''} planned before it.` : '');
 
 export const examActions = {
-  create: (body) => run(() => examsApi.create(body), { success: (result) => `${body.name} added.${slotsPlanned(result.planned.added)}` }),
-  /** Every paper of a half-yearly or final exam, with a mixed study timetable for all of them. */
-  createSeries: (body, label) =>
-    run(() => examsApi.createSeries(body), {
-      success: (result) =>
-        `${label} added: ${result.exams.length} paper${result.exams.length > 1 ? 's' : ''}, ${result.planned.added} study slot${result.planned.added === 1 ? '' : 's'} planned.`,
-    }),
   update: (id, changes) => run(() => examsApi.update(id, changes), { success: (exam) => `${exam.name} saved.` }),
   setResult: (exam, result) =>
     run(() => examsApi.setResult(exam.id, result), { success: result ? `Marks saved for ${exam.name}.` : `Marks removed from ${exam.name}.` }),

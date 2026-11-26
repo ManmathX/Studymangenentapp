@@ -13,7 +13,7 @@ import {
   tuitionsOn,
 } from './core/engine';
 import { planExamSlots, summarizeSlots } from './core/examPlan';
-import { consecutiveDates, defaultSeriesChapters, planSeriesSlots } from './core/examSeries';
+import { planSeriesSlots } from './core/examSeries';
 import { shortDate } from './core/shortDate';
 import { CHAPTER_STATUSES, EXAM_PREP_DAYS, EXAM_SERIES, PLANNING_HORIZON_DAYS, REVISION_INTERVALS } from './core/types';
 import { read, write } from './db';
@@ -30,7 +30,6 @@ import {
   requireTask,
   slippedTasks,
   studentDay,
-  subjectName,
   tasksInRange,
 } from './queries';
 import { dateKey, intIn, list, oneOf, text, unique } from './validate';
@@ -121,7 +120,7 @@ export function createExam(input) {
 
 /**
  * Changes a test's name, date, weight, subject or chapters. Study blocks already in the plan
- * stay; "Fill free slots before exams" then plans around the new date and chapters.
+ * stay; scheduling from the syllabus then plans around the new date and chapters.
  */
 export function updateExam(id, patch) {
   if (!patch || !Object.keys(patch).length) throw badRequest('Send at least one field to change');
@@ -145,91 +144,9 @@ export function updateExam(id, patch) {
   });
 }
 
-/* ---------- Half-yearly and final exams ---------- */
+/* ---------- Datesheet: every exam as a group of papers ---------- */
 
-const subjectChapters = (data, subject) => data.chapters.filter((chapter) => chapter.subject === subject).sort((a, b) => a.position - b.position);
-
-/**
- * A starting point for the half-yearly or final form: one paper per subject on back-to-back
- * days from `firstDate` (skipping Sundays unless told not to), with the chapters each paper
- * usually covers already ticked.
- */
-export function examSeriesDraft(type, firstDate, skipSundays = true) {
-  oneOf(type, Object.keys(EXAM_SERIES), 'type');
-  const data = read();
-  const { profile } = studentDay(data);
-  const dates = consecutiveDates(dateKey(firstDate, 'firstDate'), profile.subjects.length, { skipSundays });
-  return profile.subjects.map((subject, index) => {
-    const chapters = subjectChapters(data, subject);
-    return {
-      subject,
-      name: `${EXAM_SERIES[type].label}: ${subjectName(profile, subject)}`,
-      date: dates[index],
-      chapterKeys: defaultSeriesChapters(type, chapters),
-      chapters: chapters.map(({ key, name, status }) => ({ key, name, status })),
-    };
-  });
-}
-
-/** Adds every paper of a half-yearly or final exam and plans a mixed study timetable for all of them. */
-export function createExamSeries(input) {
-  const series = EXAM_SERIES[oneOf(input?.type, Object.keys(EXAM_SERIES), 'type')];
-  return write((draft) => {
-    const ctx = studentDay(draft);
-    const { profile, today } = ctx;
-    const papers = list(input.papers, 'papers', { min: 1, max: profile.subjects.length, message: 'Keep at least one paper' });
-    const seen = new Set();
-    const exams = papers.map((paper, index) => {
-      if (!profile.subjects.includes(paper.subject)) throw badRequest('That subject is turned off', 'SUBJECT_NOT_SELECTED');
-      const subject = subjectName(profile, paper.subject);
-      if (seen.has(paper.subject)) throw badRequest(`${subject} has two papers`, 'DUPLICATE_PAPER');
-      seen.add(paper.subject);
-      const date = dateKey(paper.date, `papers.${index}.date`);
-      if (date <= today) throw badRequest(`Pick a date after today for ${subject}`, 'EXAM_IN_PAST');
-      const own = subjectChapters(draft, paper.subject);
-      const keys =
-        paper.chapterKeys === undefined
-          ? defaultSeriesChapters(input.type, own)
-          : unique(list(paper.chapterKeys, `papers.${index}.chapterKeys`, { min: 1, max: 40, message: `Tick at least one ${subject} chapter` }));
-      if (keys.some((key) => !own.some((chapter) => chapter.key === key))) throw badRequest('Pick chapters from each paper’s subject', 'UNKNOWN_CHAPTER');
-      return { subject: paper.subject, date, chapterKeys: keys };
-    });
-
-    const seriesId = newId(draft);
-    const firstPaper = exams.map((exam) => exam.date).sort()[0];
-    const prepFrom = addDays(firstPaper, -series.prepDays);
-    const stored = exams.map((exam) => ({
-      id: newId(draft),
-      type: input.type,
-      seriesId,
-      seriesName: series.label,
-      prepFrom,
-      subject: exam.subject,
-      name: `${series.label}: ${subjectName(profile, exam.subject)}`,
-      date: exam.date,
-      weight: series.weight,
-      chapterKeys: exam.chapterKeys,
-    }));
-    draft.exams.push(...stored);
-
-    const lastPaper = stored.map((exam) => exam.date).sort().at(-1);
-    const { blocks, unplaced, reason } = planSeriesSlots({
-      papers: stored,
-      chapters: draft.chapters,
-      profile,
-      // School homework has its own daily slot, so only study work competes for Test prep time.
-      load: new DayLoad(tasksInRange(draft, today, lastPaper).filter((task) => task.kind !== 'homework' || task.examId)),
-      today,
-      start: ctx.start,
-      prepFrom,
-    });
-    insertTasks(draft, blocks.map((block) => ({ ...block, source: 'app', status: 'accepted' })));
-    return { exams: stored.map(copy), planned: { ...summarizeSlots(blocks, reason), unplaced, papers: stored.length } };
-  });
-}
-
-/* ---------- Datesheet: any exam (UT 1, half-yearly, an olympiad…) as a group of papers ---------- */
-
+/** What an exam on the datesheet is. Half-yearly and final exams plan like `EXAM_SERIES`; the rest like a unit test. */
 export const DATESHEET_KINDS = ['unit', 'periodic', 'halfYearly', 'final', 'other'];
 
 /** The datesheet group a paper belongs to: its exam's name ("Unit test 1") and kind. */
@@ -240,18 +157,70 @@ export function datesheetLabel(input, prefix = '') {
 }
 
 /**
- * Adds every paper of one exam from the student's datesheet, each with its own date, subject
- * and syllabus, and plans study slots for each paper straight away (soonest first).
+ * Stored fields for the papers of one exam. Half-yearly and final papers get the exam's type
+ * and a shared `prepFrom` (preparation starts weeks before the first paper); the others plan
+ * like unit tests.
  */
+export function datesheetPapers(draft, label, papers) {
+  const seriesId = newId(draft);
+  const big = EXAM_SERIES[label.kind];
+  const firstPaper = papers.map((paper) => paper.date).sort()[0];
+  return papers.map((paper) => ({
+    id: newId(draft),
+    type: big ? label.kind : 'unit',
+    seriesId,
+    ...label,
+    ...(big ? { prepFrom: addDays(firstPaper, -big.prepDays) } : {}),
+    ...paper,
+  }));
+}
+
+/**
+ * Plans study slots for newly stored papers. The papers of a half-yearly or final exam share
+ * one mixed timetable; every other paper gets its own plan, soonest first.
+ */
+export function planPapers(draft, papers, ctx) {
+  const { profile, today } = ctx;
+  const bigExams = new Map();
+  const single = [];
+  for (const paper of papers) {
+    if (paper.prepFrom) bigExams.set(paper.seriesId, [...(bigExams.get(paper.seriesId) ?? []), paper]);
+    else single.push(paper);
+  }
+  const results = [];
+  for (const group of bigExams.values()) {
+    const lastPaper = group.map((paper) => paper.date).sort().at(-1);
+    const { blocks, unplaced, reason } = planSeriesSlots({
+      papers: group,
+      chapters: draft.chapters,
+      profile,
+      // School homework has its own daily slot, so only study work competes for Test prep time.
+      load: new DayLoad(tasksInRange(draft, today, lastPaper).filter((task) => task.kind !== 'homework' || task.examId)),
+      today,
+      start: ctx.start,
+      prepFrom: group[0].prepFrom,
+    });
+    insertTasks(draft, blocks.map((block) => ({ ...block, source: 'app', status: 'accepted' })));
+    results.push({ ...summarizeSlots(blocks, reason), unplaced });
+  }
+  for (const paper of [...single].sort((a, b) => (a.date < b.date ? -1 : 1))) results.push(planForExam(draft, paper, ctx));
+  const firstDates = results.map((result) => result.firstDate).filter(Boolean).sort();
+  return {
+    added: results.reduce((sum, result) => sum + result.added, 0),
+    unplaced: results.reduce((sum, result) => sum + (result.unplaced ?? 0), 0),
+    firstDate: firstDates[0] ?? null,
+  };
+}
+
+/** Adds every paper of one exam from the student's datesheet, each with its own date, subject and syllabus, and plans them. */
 export function createDatesheet(input) {
   const label = datesheetLabel(input);
   return write((draft) => {
     const ctx = studentDay(draft);
     const { profile, today } = ctx;
     const papers = list(input.papers, 'papers', { min: 1, max: 20, message: 'Add at least one paper' });
-    const seriesId = newId(draft);
     const seen = new Set();
-    const stored = papers.map((paper, index) => {
+    const valid = papers.map((paper, index) => {
       const field = (name) => `papers.${index}.${name}`;
       const name = text(paper.name, field('name'), { max: 80, required: 'Give each paper a name.' });
       const date = dateKey(paper.date, field('date'));
@@ -260,12 +229,12 @@ export function createDatesheet(input) {
       if (seen.has(slot)) throw badRequest(`${name} is listed twice on the same day`, 'DUPLICATE_PAPER');
       seen.add(slot);
       const chapterKeys = checkSubjectAndChapters(draft, profile, paper.subject, paper.chapterKeys);
-      const weight = intIn(paper.weight ?? 20, 1, 100, field('weight'));
-      return { id: newId(draft), type: 'unit', seriesId, ...label, subject: paper.subject, name, date, weight, chapterKeys };
+      const weight = intIn(paper.weight ?? EXAM_SERIES[label.kind]?.weight ?? 20, 1, 100, field('weight'));
+      return { subject: paper.subject, name, date, weight, chapterKeys };
     });
+    const stored = datesheetPapers(draft, label, valid);
     draft.exams.push(...stored);
-    const plans = [...stored].sort((a, b) => (a.date < b.date ? -1 : 1)).map((exam) => planForExam(draft, exam, ctx));
-    return { exams: stored.map(copy), planned: { added: plans.reduce((sum, plan) => sum + plan.added, 0) } };
+    return { exams: stored.map(copy), planned: planPapers(draft, stored, ctx) };
   });
 }
 
@@ -349,7 +318,7 @@ export function summarize(blocks) {
   return { added: blocks.length, firstDate };
 }
 
-/** "Fill free slots before exams": suggests blocks the student can accept, swap or skip. */
+/** Suggests study blocks before upcoming tests that the student can accept, swap or skip. */
 function suggestForStudent(draft, ctx) {
   const liveTasks = liveTasksFrom(draft, ctx.today);
   const plannedChapterDates = new Map();

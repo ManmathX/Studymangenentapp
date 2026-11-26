@@ -1,8 +1,6 @@
-> **3-page layout.** Three tabs: **Today**, **Plan** (Plan · Homework) and **Progress** (Progress · Focus & habits), switched with a segmented control. The avatar opens Profile. Tests are kept on a **datesheet** (unit tests, half-yearly & final, other exams), each paper with its own syllabus.
-
 # Study Planner
 
-A study planner for school students on CBSE, ICSE and state boards. Students pick their board, class and subjects (adding any the syllabus lacks), mark what has been taught, add tests and homework, and the planner lays out study blocks around school, tuition and meals, within a daily limit they choose.
+A study planner for school students on CBSE, ICSE and state boards. Students pick their board, class and subjects (adding any the syllabus lacks), mark what has been taught, copy in their school datesheet, add homework, and the planner lays out study blocks around school, tuition and meals, within a daily limit they choose.
 
 - **`backend/`**: REST API for sign-in and the syllabus catalogue. Node.js 22, TypeScript, Express 5, MongoDB (replica set), optional Redis.
 - **`frontend/`**: mobile and web app. Expo SDK 58, React Native, React Navigation, Zustand. The planner runs on the device.
@@ -12,20 +10,32 @@ A study planner for school students on CBSE, ICSE and state boards. Students pic
 
 There is no AI or machine learning in the app. Scheduling is deterministic and runs on the phone (see `frontend/src/data/core/engine.js`).
 
+## The app: three pages
+
+The app has three tabs. Plan and Progress each hold two sections behind a segmented control; the avatar in the header opens Profile.
+
+| Page | Sections | What it is for |
+| --- | --- | --- |
+| **Today** | | Do it: the next test, today's timed plan, suggestions waiting for review, quick add for homework and syllabus, progress rings and streak |
+| **Plan** | Plan · Homework | Schedule it: the 14-day strip and each day's timeline, the datesheet, scheduling chapters from the syllabus, homework and the school-bag checklist |
+| **Progress** | Progress · Focus & habits | Look back and keep going: coverage, study hours, test readiness and marks, weekly review; focus timer, streak, rest days, check-in, routines and revision nudges |
+| Profile | (from the avatar) | Stats, school and tuition timings, daily study slots, appearance, parent summary, sharing the streak, backup and restore, account |
+
+Navigation lives in `frontend/src/navigation/` (`MainTabs.js` for the tabs, `SectionPage.js` for the segmented sections, `RootNavigator.js` for sign-in, setup and modal screens). Other screens open a section with `navigation.navigate('Plan', { section: 'homework' })`.
+
 ## Features
 
 | Area | What a student can do |
 | --- | --- |
 | Account | Sign in with Google (Android and iOS) or email, stay signed in (rotating refresh tokens), open the plan offline, change password, reset a forgotten password with an emailed code, sign out (the plan stays on the phone), delete the account (the login on the server and the plan on the phone) |
-| Setup | Pick board and class, turn subjects off or add your own (name and chapters), mark chapters already taught, add and edit upcoming tests, set school hours, add each tuition with its own days and times (all changeable later in Settings), or load a demo student |
-| Today | Next test countdown, today's timed plan, progress rings, streak, suggestions waiting for review, heavy-day warning |
-| Plan | 14-day strip, a day laid out around school, tuition and dinner, auto-schedule before tests, accept/swap/skip suggestions, move tasks |
+| Setup | Pick board and class, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours, add each tuition with its own days and times (all changeable later in Profile), or load a demo student |
+| Datesheet | Add unit tests, periodic tests, the half-yearly or final, or any other exam as one group of papers, each with its own date and syllabus. Unit tests get two weeks of preparation per paper; half-yearly and final exams get one mixed timetable across subjects starting weeks earlier. Edit or remove a paper or a whole exam, see readiness, add marks after a test |
+| Plan | 14-day strip, a day laid out around school, tuition and dinner, heavy-day warnings with a suggested move, move tasks |
 | Syllabus | Schedule a chapter's study steps on chosen days, update chapter status, add a subject after setup (name and chapters) |
-| Tests | Add unit tests with weight and chapters, or a half-yearly or final exam (one paper per subject on a date sheet, with a mixed study timetable); edit them, see readiness, remove tests, add marks after a test |
 | Homework | Add homework (a task is planned the day before), mark done, delete, school-bag checklist |
-| Habits | Focus timer logged to a subject, streak calendar, rest days (2 a week), wellbeing check-in, routines, spaced-revision nudges |
+| Focus & habits | Focus timer logged to a subject, streak calendar, rest days (2 a week), wellbeing check-in, routines, spaced-revision nudges |
 | Progress | Syllabus coverage, study hours against the weekly goal, test readiness, test results with marks, weekly review of slipped tasks |
-| Settings | School hours; add, edit or remove tuitions (up to 6, each with a name, days and times); daily Homework and study slots (homework length 30 to 90 min); light, dark or system appearance, age mode, exam-season mode, a weekly parent summary sent from the phone (WhatsApp, SMS, email), share the streak with friends, save a backup file and restore it (to move to a new phone), start over |
+| Profile | School hours; add, edit or remove tuitions (up to 6, each with a name, days and times); daily Homework and study slots (homework length 30 to 90 min); dark mode; a weekly parent summary sent from the phone (WhatsApp, SMS, email); share the streak with friends; save a backup file and restore it (to move to a new phone); start over |
 
 Admins use the **admin portal** to add boards (state boards included), and to add, rename, reorder, copy and delete each class's subjects and edit their chapters and difficulty. Students get a board's class once it has a subject with chapters. Students who already set up keep their own copy on their phone, so catalogue edits only affect new students. A fresh database starts with the standard CBSE and ICSE syllabus for classes 6 to 12, with book names.
 
@@ -143,11 +153,11 @@ Run `npm run build` in `adminwebsite/` with `VITE_API_URL` set to the HTTPS API 
 
 ## Known limits
 
-- A plan lives on one phone and does not sync. To move it to a new phone, save a backup in Settings and restore it there. The plan file is included in the phone's own iCloud or Google backup, but uninstalling the app without any backup loses the plan.
+- A plan lives on one phone and does not sync. To move it to a new phone, save a backup in Profile and restore it there. The plan file is included in the phone's own iCloud or Google backup, but uninstalling the app without any backup loses the plan.
 - On the web build, the plan is kept in the browser's local storage for that site.
 - The parent summary and streak are sent by the student from the phone's share sheet. Nothing is sent automatically, and there are no study groups, because those would need student data on the server.
 - Forgot password needs an email server (`SMTP_URL`); without one, students can still change their password while signed in.
 - After a password change, an account deletion or an admin role change, an access token that was already issued keeps working until it expires, at most 15 minutes.
 - CBSE and ICSE ship with a standard syllabus for classes 6 to 12. Admins load state boards and edit any class from the admin portal.
 - After setup, students can add their own subjects, but turning a board subject back on (or off) means starting over.
-- Editing a test keeps the study blocks already planned; auto-schedule plans around the new date and chapters.
+- Editing a paper keeps the study blocks already planned; schedule more from the syllabus if the date or chapters changed.

@@ -22,3 +22,8 @@ coverage/
 
 # macOS
 .DS_Store
+
+# App builds (share via EAS or a release, not git)
+*.apk
+*.aab
+*.ipa
