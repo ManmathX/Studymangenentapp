@@ -1,9 +1,11 @@
-import { addDays, eachDay } from './core/dates';
+import { addDays, eachDay, localNow, weekday } from './core/dates';
 import {
+  bestStreak,
   coverage,
   DayLoad,
   DEFAULT_HOMEWORK_MINS,
   dueRevisionNudges,
+  habitStreak,
   layoutDay,
   limitFor,
   routineSlots,
@@ -11,10 +13,10 @@ import {
   streak,
   tuitionsOf,
 } from './core/engine';
-import { ROUTINES } from './core/syllabus';
 import { REVISION_INTERVALS } from './core/types';
+import { clock } from './clock';
 import { read, write } from './db';
-import { MAX_REST_DAYS_PER_WEEK } from './daily';
+import { habitDoneOn, MAX_REST_DAYS_PER_WEEK, routineOf } from './daily';
 import { copy, doneMinutesByDay, examsFrom, focusMinutesByDay, logFor, slippedTasks, studentDay, subjectName, tasksInRange } from './queries';
 import { chaptersWithPlans, needsMoveSuggestions, recentResults, refreshMissedTasks, suggestionsByState, upcomingExams } from './study';
 
@@ -24,6 +26,9 @@ const HEAVY_DAY_LOOKAHEAD = 7;
 const SLIPPED_LOOKBACK_DAYS = 7;
 const DEFAULT_CHECKIN = { sleep: 8, breaks: 3, screen: '1 to 2 h', saved: false };
 const RECENT_MARKS_DAYS = 14;
+/** Local hours where the afternoon (after school) and evening routines begin. */
+const AFTERNOON_FROM_HOUR = 12;
+const EVENING_FROM_HOUR = 18;
 
 /** Study minutes per day (finished tasks plus focus sessions), rest days and the streak. */
 function loadActivity(data, ctx) {
@@ -42,7 +47,40 @@ function loadActivity(data, ctx) {
     return null;
   };
   const restDaysThisWeek = [...eachDay(addDays(ctx.today, -6), ctx.today)].filter((date) => stateOf(date) === 'rest').length;
-  return { minutesOn, stateOf, streak: streak(stateOf, ctx.today), restDaysThisWeek };
+  return { from, minutesOn, stateOf, streak: streak(stateOf, ctx.today), restDaysThisWeek };
+}
+
+/** "16:45" on the student's clock for a stored ISO time. */
+function localClockTime(iso, timeZone) {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
+
+/** Today's routine habits with their streaks, plus how much of each of the last seven days was done. */
+function routineSummary(data, profile, today, lastWeek, hour) {
+  const habits = routineOf(profile);
+  const scheduledOn = (habit) => (date) => habit.days.includes(weekday(date)) && (!habit.createdOn || date >= habit.createdOn);
+  const doneOn = (habit) => (date) => habitDoneOn(logFor(data, date), habit.id);
+  return {
+    now: hour < AFTERNOON_FROM_HOUR ? 'morning' : hour < EVENING_FROM_HOUR ? 'afternoon' : 'evening',
+    habits: habits.map((habit) => ({
+      id: habit.id,
+      name: habit.name,
+      icon: habit.icon ?? null,
+      part: habit.part,
+      days: [...habit.days],
+      scheduledToday: scheduledOn(habit)(today),
+      done: doneOn(habit)(today),
+      streak: habitStreak({ scheduledOn: scheduledOn(habit), doneOn: doneOn(habit), today, since: habit.createdOn ?? profile.trackingStart }),
+    })),
+    week: lastWeek.map((date) => {
+      const due = habits.filter((habit) => scheduledOn(habit)(date));
+      return { date, due: due.length, done: due.filter((habit) => doneOn(habit)(date)).length };
+    }),
+  };
 }
 
 const weekMinutes = (activity, today) => [...eachDay(addDays(today, -6), today)].reduce((sum, date) => sum + activity.minutesOn(date), 0);
@@ -115,32 +153,39 @@ export function progressDashboard() {
   };
 }
 
-/** Habits screen: streak calendar, focus sessions, check-in, routines, revision nudges. */
+/** Habits screen: streak, focus timer and history, routines, check-in, revision nudges. */
 export function habitsDashboard() {
   const data = read();
   const ctx = studentDay(data);
   const { profile, today } = ctx;
   const activity = loadActivity(data, ctx);
+  const timeZone = clock.timeZone();
   const sessions = data.focusSessions
     .filter((session) => session.date === today)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
-    .map(({ id, date, subject, mins }) => ({ id, date, subject, mins }));
+    .map(({ id, date, subject, mins, createdAt }) => ({ id, date, subject, mins, time: createdAt ? localClockTime(createdAt, timeZone) : null }));
   const log = logFor(data, today);
   const studiedToday = activity.minutesOn(today) > 0;
+  const lastWeek = [...eachDay(addDays(today, -6), today)];
+  const focusByDay = focusMinutesByDay(data, lastWeek[0], today);
+  const focusWeek = lastWeek.map((date) => ({ date, mins: focusByDay.get(date) ?? 0 }));
   return {
     today,
     streak: activity.streak,
+    bestStreak: Math.max(activity.streak, bestStreak(activity.stateOf, activity.from, today)),
+    todayState: activity.stateOf(today),
+    studiedToday,
+    restToday: Boolean(log?.rest),
     calendar: [...eachDay(addDays(today, -27), today)].map((date) => ({ date, state: activity.stateOf(date) })),
     restDaysThisWeek: activity.restDaysThisWeek,
     maxRestDaysPerWeek: MAX_REST_DAYS_PER_WEEK,
     canRestToday: !studiedToday && !log?.rest && activity.restDaysThisWeek < MAX_REST_DAYS_PER_WEEK,
     focusSessions: sessions,
     focusTodayMins: sessions.reduce((sum, session) => sum + session.mins, 0),
+    focusWeek,
+    focusWeekMins: focusWeek.reduce((sum, day) => sum + day.mins, 0),
     checkin: copy(log?.checkin ?? DEFAULT_CHECKIN),
-    routines: {
-      morning: ROUTINES.morning.map((label, index) => ({ label, done: Boolean(log?.routines?.morning?.[index]) })),
-      evening: ROUTINES.evening.map((label, index) => ({ label, done: Boolean(log?.routines?.evening?.[index]) })),
-    },
+    routine: routineSummary(data, profile, today, lastWeek, localNow(clock.now(), timeZone).hour),
     nudges: dueRevisionNudges(data.chapters, today).map((chapter) => ({
       key: chapter.key,
       name: chapter.name,

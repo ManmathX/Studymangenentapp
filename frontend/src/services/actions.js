@@ -118,7 +118,19 @@ export const homeworkActions = {
 export const habitActions = {
   takeRestDay: () => run(habitsApi.takeRestDay, { success: 'Rest day logged. Your streak is safe.' }),
   saveCheckin: (body) => run(() => habitsApi.saveCheckin(body), { success: 'Check-in saved. Only you can see it.', invalidate: ['habits'] }),
-  saveRoutines: (body) => run(() => habitsApi.saveRoutines(body), { invalidate: ['habits'] }),
+  addHabit: (body) => run(() => habitsApi.addHabit(body), { success: (habit) => `${habit.name} added to your routine.`, invalidate: ['habits'] }),
+  updateHabit: (id, changes) => run(() => habitsApi.updateHabit(id, changes), { success: (habit) => `${habit.name} saved.`, invalidate: ['habits'] }),
+  moveHabit: (id, direction) => run(() => habitsApi.moveHabit(id, direction), { invalidate: ['habits'] }),
+  setHabitDone: (id, done) => run(() => habitsApi.setHabitDone(id, done), { invalidate: ['habits'] }),
+  async removeHabit(habit) {
+    const confirmed = await confirmAction({
+      title: `Remove ${habit.name}?`,
+      message: 'It leaves your routine. Days you already ticked stay in your history.',
+      confirmLabel: 'Remove',
+    });
+    if (!confirmed) return null;
+    return run(() => habitsApi.removeHabit(habit.id), { success: `${habit.name} removed from your routine.`, invalidate: ['habits'] });
+  },
   setBagItem: (date, itemId, checked) => run(() => habitsApi.setBagItem(date, itemId, checked), { invalidate: ['bag'] }),
 };
 

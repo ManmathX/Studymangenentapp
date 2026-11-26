@@ -1,16 +1,20 @@
 import { exportBackup, parseBackup, restoreBackup } from './backup';
 import {
+  addRoutineHabit,
   bag,
   createHomework,
   homeworkSummary,
   logFocus,
+  moveRoutineHabit,
   pageHomework,
   removeHomework,
+  removeRoutineHabit,
   saveCheckin,
-  saveRoutines,
   setBagItem,
+  setHabitDone,
   setHomeworkDone,
   takeRestDay,
+  updateRoutineHabit,
 } from './daily';
 import { habitsDashboard, progressDashboard, sharingDashboard, todayDashboard } from './dashboards';
 import { addSubject, getProfile, onboard, seedDemo, updateProfile, wipeAll } from './setup';
@@ -121,7 +125,11 @@ export const habitsApi = {
   logFocus: op(logFocus),
   takeRestDay: op(takeRestDay),
   saveCheckin: op(saveCheckin),
-  saveRoutines: op(saveRoutines),
+  addHabit: op(addRoutineHabit),
+  updateHabit: op(updateRoutineHabit),
+  removeHabit: op(removeRoutineHabit),
+  moveHabit: op(moveRoutineHabit),
+  setHabitDone: op(setHabitDone),
   bag: op((date) => bag(date)),
   setBagItem: op(setBagItem),
 };

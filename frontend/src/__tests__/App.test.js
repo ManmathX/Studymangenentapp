@@ -167,6 +167,41 @@ describe('the app, with the plan kept on the phone', () => {
     expect((await savedPlanner(MEERA)).profile).toBeNull();
   });
 
+  it('runs the focus timer and customises the routine on Focus & habits', async () => {
+    serverFor(MEERA);
+    await render(<App />);
+    await signIn(MEERA);
+    await press(await screen.findByTestId('onboarding-demo').then(() => 'onboarding-demo'));
+    await screen.findByTestId('today-screen');
+    await press('tab-Progress');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Focus & habits' }));
+    await screen.findByTestId('habits-screen');
+
+    expect(await screen.findByText('READY')).toBeTruthy();
+    await press('timer-toggle');
+    expect(await screen.findByText('FOCUSING')).toBeTruthy();
+    await press('timer-toggle');
+    expect(await screen.findByText('PAUSED')).toBeTruthy();
+    // Under a minute in, discarding needs no confirmation and logs nothing.
+    await press('timer-discard');
+    expect(await screen.findByText('READY')).toBeTruthy();
+
+    await press('habit-morning-0');
+    expect(await screen.findByText('1 of 6 today')).toBeTruthy();
+    expect((await savedPlanner(MEERA)).dailyLogs['2026-11-18'].ticks).toEqual({ 'morning-0': true });
+
+    // Customise the routine: add swimming from the suggestions, then tick it.
+    await press('routine-add');
+    await press(await screen.findByTestId('suggestion-swimming').then(() => 'suggestion-swimming'));
+    await press('habit-save');
+    expect(await screen.findByText('Swimming')).toBeTruthy();
+    expect(await screen.findByText('1 of 7 today')).toBeTruthy();
+    const swimming = (await savedPlanner(MEERA)).profile.routine.find((habit) => habit.name === 'Swimming');
+    expect(swimming).toMatchObject({ icon: 'waves', part: 'afternoon', days: [0, 1, 2, 3, 4, 5, 6] });
+    await press(`habit-${swimming.id}`);
+    expect(await screen.findByText('2 of 7 today')).toBeTruthy();
+  });
+
   it('adds several tuitions at setup and edits, removes and adds them later in Profile', async () => {
     serverFor(MEERA);
     await render(<App />);

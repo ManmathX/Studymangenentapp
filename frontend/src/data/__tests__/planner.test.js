@@ -1,6 +1,6 @@
 import { backupApi, chaptersApi, dashboardApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, tasksApi } from '../api';
 import { addDays } from '../core/dates';
-import { read } from '../db';
+import { read, write } from '../db';
 import { advanceDays, freshPlanner, ONBOARDING, TODAY } from './helpers';
 
 beforeEach(freshPlanner);
@@ -594,8 +594,98 @@ describe('habits', () => {
     await onboarded();
     expect((await habitsApi.saveCheckin({ sleep: 7.5, breaks: 3, screen: '1 to 2 h' })).checkin).toEqual({ sleep: 7.5, breaks: 3, screen: '1 to 2 h', saved: true });
     await expect(habitsApi.saveCheckin({ sleep: 7.3, breaks: 3, screen: '1 to 2 h' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    await habitsApi.saveRoutines({ morning: [true, false, true], evening: [false, false, true] });
-    expect((await dashboardApi.habits()).routines.morning.map((entry) => entry.done)).toEqual([true, false, true]);
+    await habitsApi.setHabitDone('morning-0', true);
+    await habitsApi.setHabitDone('morning-2', true);
+    const morning = (await dashboardApi.habits()).routine.habits.filter((habit) => habit.part === 'morning');
+    expect(morning.map((habit) => habit.done)).toEqual([true, false, true]);
+    await expect(habitsApi.setHabitDone('rocket', true)).rejects.toMatchObject({ code: 'HABIT_NOT_FOUND' });
+  });
+
+  it('lets the student customise the routine', async () => {
+    await onboarded();
+    // Wednesday 18 Nov: swimming on Mon, Wed and Fri after school.
+    const swim = await habitsApi.addHabit({ name: 'Swimming', icon: 'waves', part: 'afternoon', days: [5, 1, 3, 3] });
+    expect(swim).toMatchObject({ name: 'Swimming', icon: 'waves', part: 'afternoon', days: [1, 3, 5], createdOn: TODAY });
+    await expect(habitsApi.addHabit({ name: ' swimming ', part: 'evening', days: [2] })).rejects.toMatchObject({ code: 'HABIT_EXISTS' });
+    await expect(habitsApi.addHabit({ name: 'Gym', part: 'afternoon', days: [] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(habitsApi.addHabit({ name: 'Gym', part: 'night', days: [1] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    const gym = await habitsApi.addHabit({ name: 'Gym', icon: '<script>', part: 'afternoon', days: [0, 1, 2, 3, 4, 5, 6] });
+    expect(gym.icon).toBe('star');
+
+    await habitsApi.moveHabit(gym.id, -1);
+    await habitsApi.removeHabit('morning-1');
+    await habitsApi.updateHabit('evening-2', { part: 'morning' });
+    await expect(habitsApi.updateHabit(gym.id, { name: 'Swimming' })).rejects.toMatchObject({ code: 'HABIT_EXISTS' });
+
+    const { routine } = await dashboardApi.habits();
+    expect(routine.habits.map((habit) => `${habit.part}: ${habit.name}`)).toEqual([
+      'morning: Look at today’s plan',
+      'morning: Do one revision nudge',
+      'evening: Tick off what you finished',
+      'evening: Move anything that slipped',
+      'afternoon: Gym',
+      'afternoon: Swimming',
+      'morning: Pick tomorrow’s first task',
+    ]);
+    expect(routine.habits.find((habit) => habit.name === 'Swimming')).toMatchObject({ scheduledToday: true, done: false, streak: 0 });
+    expect(routine.week[6]).toEqual({ date: TODAY, due: 7, done: 0 });
+    expect(read().profile.routine).toHaveLength(7);
+  });
+
+  it('keeps a habit’s streak across days it isn’t planned', async () => {
+    await onboarded();
+    const swim = await habitsApi.addHabit({ name: 'Swimming', part: 'afternoon', days: [1, 3, 5] });
+    const swimming = async () => (await dashboardApi.habits()).routine.habits.find((habit) => habit.id === swim.id);
+    await habitsApi.setHabitDone(swim.id, true); // Wed 18
+    advanceDays(2); // Fri 20
+    await habitsApi.setHabitDone(swim.id, true);
+    advanceDays(4); // Sun 22: not planned
+    expect(await swimming()).toMatchObject({ scheduledToday: false, streak: 2 });
+    advanceDays(5); // Mon 23: planned and still open
+    expect(await swimming()).toMatchObject({ scheduledToday: true, done: false, streak: 2 });
+    advanceDays(7); // Wed 25: Monday was missed
+    expect((await swimming()).streak).toBe(0);
+  });
+
+  it('reads routine ticks saved by older versions', async () => {
+    await onboarded();
+    write((draft) => {
+      draft.dailyLogs[TODAY] = { date: TODAY, rest: false, checkin: null, routines: { morning: [true, false, true], evening: [false, true, false] }, bag: {} };
+    });
+    const ticks = () => dashboardApi.habits().then((habits) => habits.routine.habits.map((habit) => habit.done));
+    expect(await ticks()).toEqual([true, false, true, false, true, false]);
+    await habitsApi.setHabitDone('morning-0', false);
+    expect(await ticks()).toEqual([false, false, true, false, true, false]);
+  });
+
+  it('summarises focus history, routines and how today counts for the streak', async () => {
+    await onboarded();
+    const before = await dashboardApi.habits();
+    expect(before).toMatchObject({ todayState: null, studiedToday: false, restToday: false, streak: 0, bestStreak: 0, focusWeekMins: 0 });
+    expect(before.routine.now).toBe('morning');
+
+    await habitsApi.logFocus('maths', 25);
+    await habitsApi.setHabitDone('morning-0', true);
+    await habitsApi.setHabitDone('morning-1', true);
+    const after = await dashboardApi.habits();
+    expect(after.focusWeek).toHaveLength(7);
+    expect(after.focusWeek[6]).toEqual({ date: TODAY, mins: 25 });
+    expect(after.focusWeekMins).toBe(25);
+    // Logged at 11:30 on the student's clock (06:00 UTC in Asia/Kolkata).
+    expect(after.focusSessions).toEqual([expect.objectContaining({ subject: 'maths', mins: 25, time: '11:30' })]);
+    expect(after).toMatchObject({ todayState: 'study', studiedToday: true, streak: 1, bestStreak: 1 });
+    expect(after.routine.week).toHaveLength(7);
+    expect(after.routine.week[6]).toEqual({ date: TODAY, due: 6, done: 2 });
+  });
+
+  it('remembers the best streak after a missed day', async () => {
+    await onboarded();
+    await habitsApi.logFocus('maths', 20);
+    advanceDays(1);
+    await habitsApi.logFocus('maths', 20);
+    advanceDays(3);
+    await habitsApi.logFocus('science', 20);
+    expect(await dashboardApi.habits()).toMatchObject({ streak: 1, bestStreak: 2 });
   });
 
   it('builds the school bag for the next school day and ticks items', async () => {

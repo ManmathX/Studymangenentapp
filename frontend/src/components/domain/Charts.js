@@ -123,7 +123,7 @@ export const StreakCalendar = memo(function StreakCalendar({ days, today }) {
                   styles.calDay,
                   { backgroundColor: fill ?? 'transparent' },
                   day.state === 'exam' && { borderWidth: 1.5, borderColor: colors.text },
-                  day.date === today && { borderWidth: 2, borderColor: colors.danger },
+                  day.date === today && { borderWidth: 2, borderColor: strong ? colors.text : colors.tint },
                 ]}
               >
                 {monthStart ? (
@@ -139,26 +139,30 @@ export const StreakCalendar = memo(function StreakCalendar({ days, today }) {
   );
 });
 
-export const TimerRing = memo(function TimerRing({ progress, color, children, size = 190 }) {
+/** Progress ring for the focus timer. `progress` is 0–1; `strokeWidth` is in the 190-unit viewBox. */
+export const TimerRing = memo(function TimerRing({ progress, color, children, size = 190, strokeWidth = 10, trackColor }) {
   const { colors } = useTheme();
-  const r = 84;
+  const r = 95 - strokeWidth / 2 - 1;
   const circumference = 2 * Math.PI * r;
+  const value = Math.max(0, Math.min(1, progress));
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
       <Svg width={size} height={size} viewBox="0 0 190 190" style={StyleSheet.absoluteFill} aria-hidden>
-        <Circle cx="95" cy="95" r={r} stroke={colors.fill} strokeWidth="10" fill="none" />
-        <Circle
-          cx="95"
-          cy="95"
-          r={r}
-          stroke={color}
-          strokeWidth="10"
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={`${circumference}`}
-          strokeDashoffset={circumference * (1 - Math.max(0, Math.min(1, progress)))}
-          transform="rotate(-90 95 95)"
-        />
+        <Circle cx="95" cy="95" r={r} stroke={trackColor ?? colors.fill} strokeWidth={strokeWidth} fill="none" />
+        {value > 0 ? (
+          <Circle
+            cx="95"
+            cy="95"
+            r={r}
+            stroke={color}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${circumference}`}
+            strokeDashoffset={circumference * (1 - value)}
+            transform="rotate(-90 95 95)"
+          />
+        ) : null}
       </Svg>
       {children}
     </View>

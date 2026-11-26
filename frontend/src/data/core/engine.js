@@ -431,6 +431,36 @@ export function streak(stateOf, today) {
   }
   return count;
 }
+/** Longest run of study, rest or exam days from `from` to `today` (same rule as `streak`). */
+export function bestStreak(stateOf, from, today) {
+  let best = 0;
+  let run = 0;
+  for (let date = from; date <= today; date = addDays(date, 1)) {
+    const state = stateOf(date);
+    if (state === 'study' || state === 'rest' || state === 'exam') {
+      run += 1;
+      best = Math.max(best, run);
+    } else if (date !== today) {
+      // Today still counts as open until it ends, so it never breaks a run.
+      run = 0;
+    }
+  }
+  return best;
+}
+/**
+ * Days in a row a routine habit was kept, counting back from today. Days it isn't scheduled on,
+ * and today while it is still open, never break the run; a tick on an off day still counts.
+ */
+export function habitStreak({ scheduledOn, doneOn, today, since }) {
+  let count = 0;
+  for (let back = 0; back < 366; back += 1) {
+    const date = addDays(today, -back);
+    if (since && date < since) break;
+    if (doneOn(date)) count += 1;
+    else if (scheduledOn(date) && date !== today) break;
+  }
+  return count;
+}
 export function nextSchoolDay(today) {
   let date = addDays(today, 1);
   while (weekday(date) === 0) date = addDays(date, 1);

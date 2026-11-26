@@ -145,6 +145,7 @@ export function upsertLog(draft, date, patch) {
   if (patch.rest !== undefined) log.rest = patch.rest;
   if (patch.checkin) log.checkin = patch.checkin;
   if (patch.routines) log.routines = patch.routines;
+  if (patch.ticks) log.ticks = { ...log.ticks, ...patch.ticks };
   if (patch.bag) log.bag = { ...log.bag, ...patch.bag };
   draft.dailyLogs[date] = log;
   return log;

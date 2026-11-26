@@ -1,16 +1,17 @@
 import { addDays, diffDays } from './core/dates';
 import { bagFor, nextSchoolDay, periodsFor, priority } from './core/engine';
-import { isSubjectPeriod, PERIOD_LABELS, SUBJECTS } from './core/syllabus';
+import { isSubjectPeriod, PERIOD_LABELS, ROUTINES, SUBJECTS } from './core/syllabus';
 import { clock } from './clock';
 import { read, write } from './db';
 import { badRequest, conflict, invalidField, notFound, unprocessable } from './errors';
 import { copy, doneMinutesByDay, focusMinutesByDay, insertTasks, logFor, newId, openHomework, studentDay, upsertLog } from './queries';
-import { dateKey, intIn, list, oneOf, optionalText, text } from './validate';
+import { dateKey, intIn, list, oneOf, optionalText, text, unique } from './validate';
 
 export const MAX_REST_DAYS_PER_WEEK = 2;
 /** Sanity bound so streaks and study hours can't be inflated by bogus sessions. */
 export const MAX_FOCUS_MINUTES_PER_DAY = 720;
 export const SCREEN_TIME_OPTIONS = ['Under 1 h', '1 to 2 h', '2 to 3 h', 'Over 3 h'];
+
 const BAG_DAYS_AHEAD = 7;
 const HOMEWORK_WEIGHT = 5;
 
@@ -119,7 +120,7 @@ export function removeHomework(id) {
   return null;
 }
 
-/* ---------- Focus, rest days, check-in, routines ---------- */
+/* ---------- Focus, rest days, check-in ---------- */
 
 export function logFocus(subject, mins) {
   return write((draft) => {
@@ -166,11 +167,129 @@ export function saveCheckin(input) {
   });
 }
 
-export function saveRoutines(input) {
-  const ticks = (value, field) => list(value, field, { min: 3, max: 3, message: 'Send three ticks' }).map(Boolean);
+/* ---------- Routines ---------- */
+
+/** Routines are grouped by time of day, like the habit apps students know. */
+export const ROUTINE_PARTS = ['morning', 'afternoon', 'evening'];
+export const MAX_ROUTINE_HABITS = 24;
+const HABIT_NAME_MAX = 40;
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+const DEFAULT_HABIT_ICON = 'star';
+const SUGGESTED_ICONS = { morning: ['list-check', 'backpack', 'repeat'], evening: ['check-circle', 'calendar', 'target'] };
+
+/**
+ * The student's routine: habits with a time of day and the weekdays they happen on (0 = Sunday).
+ * Until the student customises it, the routine is the suggested study steps; their ids match the
+ * ticks older versions saved (`morning-0` … `evening-2`).
+ */
+export function routineOf(profile) {
+  if (Array.isArray(profile?.routine)) return profile.routine;
+  return ['morning', 'evening'].flatMap((part) =>
+    ROUTINES[part].map((name, index) => ({ id: `${part}-${index}`, name, icon: SUGGESTED_ICONS[part][index], part, days: [...EVERY_DAY], createdOn: null })),
+  );
+}
+
+/** Whether a habit was ticked on a day. Older versions saved the suggested steps as arrays of ticks. */
+export function habitDoneOn(log, id) {
+  const tick = log?.ticks?.[id];
+  if (tick !== undefined) return Boolean(tick);
+  const legacy = /^(morning|evening)-(\d)$/.exec(id);
+  return legacy ? Boolean(log?.routines?.[legacy[1]]?.[Number(legacy[2])]) : false;
+}
+
+/** The routine as stored on the profile, copied out of the defaults on the first change. */
+function editableRoutine(profile) {
+  if (!Array.isArray(profile.routine)) profile.routine = routineOf(profile).map((habit) => ({ ...habit, days: [...habit.days] }));
+  return profile.routine;
+}
+
+function requireHabit(routine, id) {
+  const habit = routine.find((item) => item.id === id);
+  if (!habit) throw notFound('That habit isn’t in your routine', 'HABIT_NOT_FOUND');
+  return habit;
+}
+
+function habitFields(input, routine, current) {
+  const fields = {};
+  if (!current || input.name !== undefined) {
+    fields.name = text(input.name, 'name', { max: HABIT_NAME_MAX, required: 'Name the habit' });
+    const taken = routine.some((item) => item !== current && item.name.toLowerCase() === fields.name.toLowerCase());
+    if (taken) throw conflict(`${fields.name} is already in your routine`, 'HABIT_EXISTS');
+  }
+  if (!current || input.part !== undefined) fields.part = oneOf(input.part, ROUTINE_PARTS, 'part');
+  if (!current || input.days !== undefined) {
+    const days = list(input.days, 'days', { min: 1, max: 7, message: 'Pick at least one day' });
+    fields.days = unique(days.map((day) => intIn(day, 0, 6, 'days'))).sort((a, b) => a - b);
+  }
+  if (input.icon !== undefined || !current) {
+    // Icons are names from the app's habit icon set; anything else falls back to a star.
+    fields.icon = typeof input.icon === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(input.icon) ? input.icon : DEFAULT_HABIT_ICON;
+  }
+  return fields;
+}
+
+/** Adds a habit (a study step, swimming, dance class, gym…) at the end of its time of day. */
+export function addRoutineHabit(input = {}) {
   return write((draft) => {
-    const { today } = studentDay(draft);
-    return logDto(upsertLog(draft, today, { routines: { morning: ticks(input.morning, 'morning'), evening: ticks(input.evening, 'evening') } }));
+    const { profile, today } = studentDay(draft);
+    const routine = editableRoutine(profile);
+    if (routine.length >= MAX_ROUTINE_HABITS) throw conflict(`A routine holds up to ${MAX_ROUTINE_HABITS} habits`, 'ROUTINE_FULL');
+    const habit = { id: newId(draft), ...habitFields(input, routine, null), createdOn: today };
+    routine.push(habit);
+    return copy(habit);
+  });
+}
+
+/** Renames a habit, or changes its time of day or days. A habit moved to another time of day goes last there. */
+export function updateRoutineHabit(id, input = {}) {
+  return write((draft) => {
+    const { profile } = studentDay(draft);
+    const routine = editableRoutine(profile);
+    const habit = requireHabit(routine, id);
+    const fields = habitFields(input, routine, habit);
+    const moved = fields.part && fields.part !== habit.part;
+    Object.assign(habit, fields);
+    if (moved) {
+      routine.splice(routine.indexOf(habit), 1);
+      routine.push(habit);
+    }
+    return copy(habit);
+  });
+}
+
+/** Removes a habit. Days already ticked stay in the history but no longer count. */
+export function removeRoutineHabit(id) {
+  write((draft) => {
+    const { profile } = studentDay(draft);
+    const routine = editableRoutine(profile);
+    routine.splice(routine.indexOf(requireHabit(routine, id)), 1);
+  });
+  return null;
+}
+
+/** Moves a habit one place up (-1) or down (1) within its time of day. */
+export function moveRoutineHabit(id, direction) {
+  return write((draft) => {
+    const { profile } = studentDay(draft);
+    const routine = editableRoutine(profile);
+    const habit = requireHabit(routine, id);
+    oneOf(direction, [-1, 1], 'direction');
+    const index = routine.indexOf(habit);
+    let other = index + direction;
+    while (other >= 0 && other < routine.length && routine[other].part !== habit.part) other += direction;
+    if (other < 0 || other >= routine.length) return copy(routineOf(profile));
+    [routine[index], routine[other]] = [routine[other], routine[index]];
+    return copy(routine);
+  });
+}
+
+/** Ticks (or unticks) a habit for today. */
+export function setHabitDone(id, done) {
+  return write((draft) => {
+    const { profile, today } = studentDay(draft);
+    requireHabit(routineOf(profile), id);
+    upsertLog(draft, today, { ticks: { [id]: Boolean(done) } });
+    return { id, date: today, done: Boolean(done) };
   });
 }
 

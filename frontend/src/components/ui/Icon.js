@@ -5,6 +5,8 @@ const shapes = {
   check: <Polyline points="5 12.5 10 17 19 7" />,
   chevron: <Polyline points="9 6 15 12 9 18" />,
   back: <Polyline points="15 6 9 12 15 18" />,
+  up: <Polyline points="6 15 12 9 18 15" />,
+  down: <Polyline points="6 9 12 15 18 9" />,
   plus: (
     <>
       <Path d="M12 5v14" />
@@ -13,6 +15,27 @@ const shapes = {
   ),
   spark: <Path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z" />,
   play: <Path d="M8 5.5v13l10-6.5z" />,
+  pause: (
+    <>
+      <Rect x="6.5" y="5" width="4" height="14" rx="1.3" />
+      <Rect x="13.5" y="5" width="4" height="14" rx="1.3" />
+    </>
+  ),
+  stop: <Rect x="6" y="6" width="12" height="12" rx="2.5" />,
+  close: <Path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
+  coffee: (
+    <>
+      <Path d="M4.5 9h11v4.5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z" />
+      <Path d="M15.5 10.5h1.25a2.5 2.5 0 0 1 0 5H15" />
+      <Path d="M8 3.5v2.5M12 3.5v2.5" />
+    </>
+  ),
+  clock: (
+    <>
+      <Circle cx="12" cy="12" r="8.5" />
+      <Path d="M12 7.5V12l3 2" />
+    </>
+  ),
   moon: <Path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />,
   warn: (
     <>
@@ -78,7 +101,7 @@ const shapes = {
   ),
 };
 
-const filled = new Set(['play', 'spark', 'dot']);
+const filled = new Set(['play', 'pause', 'stop', 'spark', 'dot']);
 
 function IconBase({ name, size = 22, color = '#000', strokeWidth = 2 }) {
   const isFilled = filled.has(name);
