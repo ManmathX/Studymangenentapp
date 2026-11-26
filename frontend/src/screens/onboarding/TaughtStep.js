@@ -34,7 +34,7 @@ export function TaughtStep({ navigation }) {
                 <ChapterCheck key={chapter.key} first={index === 0} chapter={chapter} checked={Boolean(draft.taught[chapter.key])} onToggle={toggleTaught} />
               ))}
             </Card>
-            <Muted small>Ticked chapters start as Learning. Mark them Revised or Mastered from Progress.</Muted>
+            <Muted small>Ticked chapters start as Studied. Mark them Practiced, Revised or Mastered from Progress.</Muted>
           </>
         )}
       </AsyncBoundary>

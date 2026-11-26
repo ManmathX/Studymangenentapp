@@ -19,7 +19,7 @@ export function SectionPage({ sections, label, navigation, route }) {
         <SegmentedControl label={label} value={value} onChange={choose} options={sections.map(({ value: v, label: l }) => ({ value: v, label: l }))} />
       </View>
       <View style={styles.root}>
-        <Current navigation={navigation} route={route} />
+        <Current key={value} navigation={navigation} route={route} />
       </View>
     </View>
   );
@@ -27,5 +27,5 @@ export function SectionPage({ sections, label, navigation, route }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  bar: { width: '100%', alignSelf: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 },
+  bar: { width: '100%', alignSelf: 'center', paddingHorizontal: 14, paddingTop: 2, paddingBottom: 2 },
 });

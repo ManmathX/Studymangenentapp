@@ -153,12 +153,12 @@ export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 
                     {paper ? `${shortDate(paper.date)} · ${keys.length} of ${plural(subject.chapters.length, 'chapter')}` : 'No paper'}
                   </Text>
                 </View>
-                <Switch value={Boolean(paper)} onValueChange={(on) => toggleSubject(subject.id, on)} accessibilityLabel={`${subject.name} paper`} trackColor={{ true: colors.success }} />
+                <Switch value={Boolean(paper)} onValueChange={(on) => toggleSubject(subject.id, on)} accessibilityLabel={`${subject.name} paper`} trackColor={{ true: colors.success, false: colors.fillStrong }} thumbColor="#FFFFFF" />
               </View>
               {paper ? (
                 <View style={styles.paperActions}>
                   <Button title="Syllabus" icon="check" size="sm" variant={what === 'syllabus' ? 'primary' : 'secondary'} onPress={() => toggleOpen('syllabus')} testID={`builder-${subject.id}-syllabus`} />
-                  <Button title="Date" size="sm" variant={what === 'date' ? 'primary' : 'secondary'} onPress={() => toggleOpen('date')} testID={`builder-${subject.id}-date`} />
+                  <Button title="Date" icon="today" size="sm" variant={what === 'date' ? 'primary' : 'secondary'} onPress={() => toggleOpen('date')} testID={`builder-${subject.id}-date`} />
                 </View>
               ) : null}
               {paper && what === 'date' ? (
@@ -214,12 +214,12 @@ export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 12 },
-  heading: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 8, paddingHorizontal: 4 },
+  root: { gap: 10 },
+  heading: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 6, paddingHorizontal: 2 },
   flex: { flex: 1 },
-  paperRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  paperActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 12, marginLeft: 22 },
-  panel: { paddingHorizontal: 12, paddingBottom: 12 },
+  paperRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6 },
+  paperActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 10, marginLeft: 22 },
+  panel: { paddingHorizontal: 12, paddingBottom: 10 },
   quick: { flexDirection: 'row', gap: 4, paddingHorizontal: 12 },
   buttons: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

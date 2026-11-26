@@ -6,7 +6,7 @@ import { __files } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import * as Sharing from 'expo-sharing';
 import App from '../App';
-import { examsApi, profileApi } from '../data/api';
+import { examsApi } from '../data/api';
 import { setClockForTests } from '../data/clock';
 import { persistNow, resetForTests } from '../data/db';
 import { CATALOG } from '../data/__tests__/helpers';
@@ -225,6 +225,7 @@ describe('the app, with the plan kept on the phone', () => {
 
     // Later: Maths tuition runs to 18:00, Science stops, and a new Tuesday tuition starts.
     await openProfile();
+    await press('section-school');
     await fireEvent.press(screen.getByLabelText('More Maths tuition ends'));
     await fireEvent.press(screen.getByLabelText('More Maths tuition ends'));
     await press('remove-tuition-1');
@@ -302,13 +303,12 @@ describe('the app, with the plan kept on the phone', () => {
     expect(await screen.findByTestId('datesheet-group-Half-yearly')).toBeTruthy();
   });
 
-  it('adds marks, sends the parent summary and shares the streak from the phone, and sets the homework slot', async () => {
+  it('adds marks, shares the streak from the phone, and sets the homework slot', async () => {
     serverFor(MEERA);
     await render(<App />);
     await signIn(MEERA);
     await setUp();
     await examsApi.create({ subject: 'maths', name: 'Maths class test', date: '2026-11-20', weight: 10, chapterKeys: ['maths-1'] });
-    await profileApi.update({ sharing: { parent: true, items: { marks: true } } });
     setClockForTests(new Date('2026-11-21T06:00:00.000Z'));
 
     await press('tab-Progress');
@@ -320,14 +320,11 @@ describe('the app, with the plan kept on the phone', () => {
     expect(await screen.findByText('32.5/40 · 81%')).toBeTruthy();
 
     await openProfile();
-    expect(await screen.findByText(/Marks: Maths class test 32\.5\/40 \(81%\)/)).toBeTruthy();
-    await press('send-parent-summary');
-    expect(Share.share).toHaveBeenLastCalledWith({ message: expect.stringMatching(/^Meera’s study week\n• [\s\S]*Marks: Maths class test 32\.5\/40 \(81%\)/) });
-    expect(await screen.findByText('Summary sent.')).toBeTruthy();
 
     await press('share-streak');
     expect(Share.share).toHaveBeenLastCalledWith({ message: expect.stringMatching(/streak/) });
 
+    await press('section-slots');
     expect(screen.getByTestId('today-slot-homework')).toBeTruthy();
     await fireEvent.press(screen.getByText('45 min'));
     expect(await screen.findByText(/Homework slot set to 45 min a day/)).toBeTruthy();

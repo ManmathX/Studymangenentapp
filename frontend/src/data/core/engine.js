@@ -287,6 +287,10 @@ export function stepsFor(chapter) {
       { title: 'Practise extra questions', mins: 30, kind: 'practice' },
       { title: 'Revise from your notes', mins: 20, kind: 'revision' },
     ],
+    practiced: [
+      { title: 'Revise from your notes', mins: 20, kind: 'revision' },
+      { title: 'Past-paper questions', mins: 30, kind: 'practice' },
+    ],
     revised: [
       { title: 'Past-paper questions', mins: 30, kind: 'practice' },
       { title: 'Final revision', mins: 20, kind: 'revision' },
@@ -342,8 +346,8 @@ export function dueRevisionNudges(chapters, today) {
   });
 }
 export function coverage(chapters) {
-  const counts = { not: 0, learning: 0, revised: 0, mastered: 0 };
-  for (const chapter of chapters) counts[chapter.status] += 1;
+  const counts = { not: 0, learning: 0, practiced: 0, revised: 0, mastered: 0 };
+  for (const chapter of chapters) if (chapter.status in counts) counts[chapter.status] += 1;
   const total = chapters.length;
   const covered = counts.revised + counts.mastered;
   return { counts, total, covered, percent: total ? Math.round((covered / total) * 100) : 0 };
@@ -358,6 +362,7 @@ export function readiness(chapterKeys, statusByKey) {
 const EXAM_STEP = {
   not: { mins: 60, what: 'self study and notes', kind: 'study' },
   learning: { mins: 45, what: 'revise and practise', kind: 'revision' },
+  practiced: { mins: 30, what: 'revision', kind: 'revision' },
   revised: { mins: 30, what: 'final revision', kind: 'revision' },
 };
 /**

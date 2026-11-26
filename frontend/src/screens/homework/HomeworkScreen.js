@@ -2,7 +2,8 @@ import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, SectionList, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/ui/Button';
 import { CheckRow } from '../../components/ui/Controls';
-import { ThemedRefreshControl } from '../../components/ui/Layout';
+import { Card, IconTile, ThemedRefreshControl } from '../../components/ui/Layout';
+import { Appear, CountUp } from '../../components/ui/Motion';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 import { homeworkApi } from '../../data/api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
@@ -15,11 +16,11 @@ import { addDays, dayName } from '../../utils/format';
 import { HomeworkRow } from './HomeworkRow';
 
 const GROUPS = [
-  ['Overdue', (item, today) => item.due < today],
-  ['Due today', (item, today) => item.due === today],
-  ['Due tomorrow', (item, today) => item.due === addDays(today, 1)],
-  ['This week', (item, today) => item.due > addDays(today, 1) && item.due <= addDays(today, 7)],
-  ['Later', (item, today) => item.due > addDays(today, 7)],
+  ['Overdue', (item, today) => item.due < today, 'warn', 'danger'],
+  ['Due today', (item, today) => item.due === today, 'bell', 'warning'],
+  ['Due tomorrow', (item, today) => item.due === addDays(today, 1), 'today', 'tint'],
+  ['This week', (item, today) => item.due > addDays(today, 1) && item.due <= addDays(today, 7), 'plan', 'tint'],
+  ['Later', (item, today) => item.due > addDays(today, 7), 'clock', 'textSecondary'],
 ];
 
 const loadDonePage = (page) => homeworkApi.page('done', page);
@@ -37,17 +38,20 @@ export function HomeworkScreen({ navigation }) {
 
   const sections = useMemo(() => {
     if (!today || !open.data) return [];
-    const groups = GROUPS.map(([title, test]) => ({ key: title, title, data: open.data.filter((item) => test(item, today)) })).filter((group) => group.data.length);
+    const groups = GROUPS.map(([title, test, icon, tone]) => ({ key: title, title, icon, tone, data: open.data.filter((item) => test(item, today)) })).filter((group) => group.data.length);
     return [
-      ...(groups.length ? groups : [{ key: 'none', title: 'Pending', data: [], empty: 'No homework pending.' }]),
-      { key: 'bag', title: bag.data ? `Bag for ${dayName(bag.data.date, today)}` : 'Bag', meta: bag.data ? `${bag.data.packed} of ${bag.data.items.length}` : '', data: bag.data ? [bag.data] : [], kind: 'bag' },
-      { key: 'done', title: 'Done', data: done.items, empty: done.loading ? null : 'Finished homework shows up here.' },
+      ...(groups.length ? groups : [{ key: 'none', title: 'Pending', icon: 'homework', tone: 'tint', data: [], empty: 'No homework pending. Nice! 🎉' }]),
+      { key: 'bag', title: bag.data ? `Bag for ${dayName(bag.data.date, today)}` : 'Bag', icon: 'bag', tone: 'warning', meta: bag.data ? `${bag.data.packed} of ${bag.data.items.length}` : '', data: bag.data ? [bag.data] : [], kind: 'bag' },
+      { key: 'done', title: 'Done', icon: 'check', tone: 'success', data: done.items, empty: done.loading ? null : 'Finished homework shows up here.' },
     ];
   }, [bag.data, done.items, done.loading, open.data, today]);
 
   const renderItem = useCallback(
-    ({ item, section }) =>
-      section.kind === 'bag' ? <BagCard bag={item} /> : <HomeworkRow item={item} today={today} onToggle={toggle.execute} onDelete={remove.execute} disabled={busy} />,
+    ({ item, section, index }) => (
+      <Appear delay={Math.min(index, 6) * 40}>
+        {section.kind === 'bag' ? <BagCard bag={item} /> : <HomeworkRow item={item} today={today} onToggle={toggle.execute} onDelete={remove.execute} disabled={busy} />}
+      </Appear>
+    ),
     [today, toggle.execute, remove.execute, busy],
   );
 
@@ -70,8 +74,8 @@ export function HomeworkScreen({ navigation }) {
       keyExtractor={(item, index) => item.id ?? item.date ?? String(index)}
       renderItem={renderItem}
       stickySectionHeadersEnabled={false}
-      renderSectionHeader={({ section }) => <SectionHeader title={section.title} meta={section.meta ?? (section.key === 'done' ? '' : String(section.data.length))} />}
-      renderSectionFooter={({ section }) => (section.empty && !section.data.length ? <EmptyState message={section.empty} /> : null)}
+      renderSectionHeader={({ section }) => <SectionHeader title={section.title} icon={section.icon} tone={section.tone} meta={section.meta ?? (section.key === 'done' ? '' : String(section.data.length))} />}
+      renderSectionFooter={({ section }) => (section.empty && !section.data.length ? <EmptyState icon={section.key === 'done' ? 'check' : 'star'} message={section.empty} /> : null)}
       ListHeaderComponent={<Header summary={summary.data} onAdd={() => navigation.navigate('NewHomework')} />}
       ListFooterComponent={done.loading ? <ActivityIndicator style={styles.footer} /> : done.error ? <ErrorState error={done.error} onRetry={done.retry} /> : null}
       onEndReached={done.loadMore}
@@ -88,32 +92,41 @@ function Header({ summary, onAdd }) {
   return (
     <View style={styles.header}>
       <View style={styles.tiles}>
-        <Tile value={summary.dueThisWeek} label="Due in the next 7 days" color={colors.tint} />
-        <Tile value={summary.doneThisWeek} label="Done this week" color={colors.success} />
+        <Tile value={summary.dueThisWeek} label="Due in 7 days" icon="bell" color={colors.tint} />
+        <Tile value={summary.doneThisWeek} label="Done this week" icon="check" color={colors.success} />
       </View>
       <Button title="Add homework" icon="plus" variant="primary" block onPress={onAdd} testID="add-homework" />
     </View>
   );
 }
 
-function Tile({ value, label, color }) {
+function Tile({ value, label, icon, color }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.tile, { backgroundColor: colors.card }]}>
-      <Text style={{ color, fontSize: 30, fontWeight: '800' }}>{value}</Text>
-      <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{label}</Text>
-    </View>
+    <Card style={styles.tile}>
+      <IconTile name={icon} color={color} size={34} />
+      <View>
+        <CountUp value={value} style={{ color: colors.text, fontSize: 22, fontWeight: '900' }} />
+        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>{label}</Text>
+      </View>
+    </Card>
   );
 }
 
-function SectionHeader({ title, meta }) {
+function SectionHeader({ title, meta, icon, tone }) {
   const { colors } = useTheme();
+  const color = colors[tone] ?? colors.tint;
   return (
     <View style={styles.sectionHeader}>
-      <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }} accessibilityRole="header">
+      {icon ? <IconTile name={icon} color={color} size={24} /> : null}
+      <Text style={[styles.sectionTitle, { color: tone === 'danger' ? colors.danger : colors.text }]} accessibilityRole="header">
         {title}
       </Text>
-      {meta ? <Text style={{ color: colors.textSecondary }}>{meta}</Text> : null}
+      {meta ? (
+        <View style={[styles.metaPill, { backgroundColor: colors.fill }]}>
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{meta}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -122,7 +135,7 @@ function BagCard({ bag }) {
   const { colors } = useTheme();
   const toggle = (item) => habitActions.setBagItem(bag.date, item.id, !item.checked);
   return (
-    <View style={[styles.bag, { backgroundColor: colors.card }]}>
+    <Card flush style={styles.bag}>
       <View style={styles.periods} accessibilityLabel="Periods">
         {bag.periods.map((period) => (
           <Text key={period.number} style={[styles.period, { color: colors.textSecondary, backgroundColor: colors.fill }]}>
@@ -133,20 +146,22 @@ function BagCard({ bag }) {
       {bag.items.map((item) => (
         <CheckRow key={item.id} label={item.label} checked={item.checked} onToggle={() => toggle(item)} />
       ))}
-      <Text style={[styles.bagFoot, { color: colors.textSecondary }]}>Built from the timetable and the homework due.</Text>
-    </View>
+      <Text style={[styles.bagFoot, { color: colors.textSecondary }]}>Tick each thing as you pack it. Built from your timetable and homework due.</Text>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 40, width: '100%', alignSelf: 'center' },
-  header: { gap: 12, marginBottom: 8 },
-  tiles: { flexDirection: 'row', gap: 10 },
-  tile: { flex: 1, borderRadius: 16, padding: 14 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 18, paddingBottom: 8, paddingHorizontal: 4 },
-  bag: { borderRadius: 16, overflow: 'hidden', paddingBottom: 8 },
-  periods: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 14 },
-  period: { fontSize: 12, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
-  bagFoot: { fontSize: 12, paddingHorizontal: 16, paddingTop: 4 },
+  content: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 32, width: '100%', alignSelf: 'center' },
+  header: { gap: 10, marginBottom: 4 },
+  tiles: { flexDirection: 'row', gap: 8 },
+  tile: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 18, paddingBottom: 10, paddingHorizontal: 2 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', flex: 1 },
+  metaPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  bag: { paddingBottom: 8, marginBottom: 4 },
+  periods: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4 },
+  period: { fontSize: 11.5, fontWeight: '600', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
+  bagFoot: { fontSize: 12, paddingHorizontal: 14, paddingTop: 2, lineHeight: 16 },
   footer: { marginVertical: 16 },
 });

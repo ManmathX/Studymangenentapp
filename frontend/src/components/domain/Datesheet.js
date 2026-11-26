@@ -5,7 +5,7 @@ import { datesheetSections } from '../../utils/datesheet';
 import { dayOfMonth, diffDays, plural, shortMonth, shortWeekday } from '../../utils/format';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
-import { Card, Divider } from '../ui/Layout';
+import { Card, Divider, IconTile } from '../ui/Layout';
 import { SubjectDot } from './Badges';
 
 function dateRange(from, to) {
@@ -36,7 +36,7 @@ const PaperRow = memo(function PaperRow({ exam, daysLeft, isNext, subject, showN
   const left = daysLeft === 0 ? 'Today' : daysLeft === 1 ? '1 day' : `${daysLeft} days`;
   const summary = exam.readiness ? `${exam.readiness.revised}/${exam.readiness.total} revised` : plural(exam.chapterKeys.length, 'chapter');
   return (
-    <View style={isNext && { backgroundColor: colors.fill }} testID={`datesheet-row-${exam.id}`}>
+    <View style={isNext && { backgroundColor: colors.tintSoft }} testID={`datesheet-row-${exam.id}`}>
       <View style={styles.row}>
         <Pressable
           onPress={() => setOpen((value) => !value)}
@@ -56,14 +56,18 @@ const PaperRow = memo(function PaperRow({ exam, daysLeft, isNext, subject, showN
               <Text style={[styles.subject, { color: colors.text }]} numberOfLines={1}>
                 {subject.name}
               </Text>
-              {isNext ? <Text style={[styles.next, { color: colors.tint }]}>NEXT</Text> : null}
+              {isNext ? (
+                <View style={[styles.nextPill, { backgroundColor: colors.tint }]}>
+                  <Text style={styles.next}>NEXT</Text>
+                </View>
+              ) : null}
             </View>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }} numberOfLines={1}>
               {showName ? `${exam.name} · ` : ''}
               {summary} {open ? '▴' : '▾'}
             </Text>
           </View>
-          <Text style={[styles.leftCol, { color: daysLeft <= 3 ? colors.danger : colors.textSecondary }]}>{left}</Text>
+          <Text style={[styles.leftCol, { color: daysLeft <= 3 ? colors.danger : colors.textSecondary, fontWeight: daysLeft <= 3 ? '800' : '600' }]}>{left}</Text>
         </Pressable>
         {onEdit || onRemove ? (
           <View style={styles.actions}>
@@ -92,48 +96,49 @@ const PaperRow = memo(function PaperRow({ exam, daysLeft, isNext, subject, showN
   );
 });
 
+/** One exam (e.g. "Unit test 1"): its name, dates and actions sit at the top of its own card. */
 function Group({ group, nextId, daysLeftOf, subjectOf, syllabusOf, onEdit, onRemove, onEditGroup, onRemoveGroup, busy }) {
   const { colors } = useTheme();
   return (
-    <View style={styles.group} testID={`datesheet-group-${group.title}`}>
-      <View style={styles.groupHead}>
+    <Card flush testID={`datesheet-group-${group.title}`}>
+      <View style={[styles.groupHead, { borderBottomColor: colors.separator }]}>
         <View style={styles.flex}>
-          <Text style={[styles.groupTitle, { color: colors.text }]}>{group.title}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+          <Text style={[styles.groupTitle, { color: colors.text }]} numberOfLines={1}>
+            {group.title}
+          </Text>
+          <Text style={[styles.groupMeta, { color: colors.textSecondary }]}>
             {dateRange(group.from, group.to)} · {plural(group.exams.length, 'paper')}
           </Text>
         </View>
         {onEditGroup ? <Button title="Edit" size="sm" icon="pencil" onPress={() => onEditGroup(group)} disabled={busy} /> : null}
-        {onRemoveGroup ? <Button title="Remove" size="sm" variant="danger" onPress={() => onRemoveGroup(group)} disabled={busy} /> : null}
+        {onRemoveGroup ? <Button title="Remove" size="sm" icon="trash" variant="danger" onPress={() => onRemoveGroup(group)} disabled={busy} /> : null}
       </View>
-      <Card flush>
-        <View style={[styles.row, styles.headRow]}>
-          <View style={styles.rowMain}>
-            <Text style={[styles.head, styles.dateCol, { color: colors.textTertiary }]}>DATE</Text>
-            <Text style={[styles.head, styles.dayCol, { color: colors.textTertiary }]}>DAY</Text>
-            <Text style={[styles.head, styles.subjectCol, { color: colors.textTertiary }]}>SUBJECT</Text>
-            <Text style={[styles.head, styles.leftCol, { color: colors.textTertiary }]}>LEFT</Text>
-          </View>
-          {onEdit || onRemove ? <View style={styles.actions} /> : null}
+      <View style={[styles.row, styles.headRow, { backgroundColor: colors.fill }]}>
+        <View style={[styles.rowMain, styles.headMain]}>
+          <Text style={[styles.head, styles.dateCol, { color: colors.textTertiary }]}>DATE</Text>
+          <Text style={[styles.head, styles.dayCol, { color: colors.textTertiary }]}>DAY</Text>
+          <Text style={[styles.head, styles.subjectCol, { color: colors.textTertiary }]}>SUBJECT</Text>
+          <Text style={[styles.head, styles.leftCol, { color: colors.textTertiary }]}>LEFT</Text>
         </View>
-        {group.exams.map((exam) => (
-          <View key={exam.id}>
-            <Divider />
-            <PaperRow
-              exam={exam}
-              daysLeft={daysLeftOf(exam)}
-              isNext={exam.id === nextId}
-              subject={subjectOf(exam.subject)}
-              showName={!group.series}
-              syllabus={syllabusOf(exam)}
-              onEdit={onEdit}
-              onRemove={onRemove}
-              busy={busy}
-            />
-          </View>
-        ))}
-      </Card>
-    </View>
+        {onEdit || onRemove ? <View style={styles.actions} /> : null}
+      </View>
+      {group.exams.map((exam, index) => (
+        <View key={exam.id}>
+          {index ? <Divider inset={0} /> : null}
+          <PaperRow
+            exam={exam}
+            daysLeft={daysLeftOf(exam)}
+            isNext={exam.id === nextId}
+            subject={subjectOf(exam.subject)}
+            showName={!group.series}
+            syllabus={syllabusOf(exam)}
+            onEdit={onEdit}
+            onRemove={onRemove}
+            busy={busy}
+          />
+        </View>
+      ))}
+    </Card>
   );
 }
 
@@ -148,6 +153,8 @@ const defaultSyllabus = (exam) => (exam.chapters ?? []).map((chapter) => chapter
  * `exam.chapters`). `onAdd(kind)` shows an Add button per section. `onEdit` / `onRemove` act
  * on one paper, `onEditGroup` / `onRemoveGroup` on a whole exam.
  */
+const SECTION_LOOK = { unit: ['list', 'tint'], term: ['trophy', 'warning'], other: ['star', 'success'] };
+
 export function Datesheet({ exams, today, subjectOf, syllabusOf = defaultSyllabus, onAdd, onEdit, onRemove, onEditGroup, onRemoveGroup, busy = false }) {
   const { colors } = useTheme();
   const daysLeftOf = (exam) => exam.daysLeft ?? diffDays(today, exam.date);
@@ -158,19 +165,31 @@ export function Datesheet({ exams, today, subjectOf, syllabusOf = defaultSyllabu
       {datesheetSections(exams).map((section) => (
         <View key={section.value} style={styles.section} testID={`datesheet-section-${section.value}`}>
           <View style={styles.sectionHead}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
-              {section.title}
-            </Text>
-            {section.groups.length ? <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{plural(section.groups.length, 'exam')}</Text> : null}
+            <IconTile name={SECTION_LOOK[section.value]?.[0] ?? 'today'} color={colors[SECTION_LOOK[section.value]?.[1]] ?? colors.tint} size={26} />
+            <View style={styles.flex}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+                {section.title}
+              </Text>
+              <Text style={[styles.sectionMeta, { color: colors.textSecondary }]} numberOfLines={2}>
+                {section.groups.length ? plural(section.groups.length, 'exam') : section.empty}
+              </Text>
+            </View>
+            {onAdd ? (
+              <Button
+                title="Add"
+                icon="plus"
+                size="sm"
+                variant={section.groups.length ? 'secondary' : 'primary'}
+                accessibilityLabel={section.addLabel}
+                onPress={() => onAdd(section.addKind)}
+                disabled={busy}
+                testID={`datesheet-add-${section.value}`}
+              />
+            ) : null}
           </View>
-          {section.groups.length ? (
-            section.groups.map((group) => <Group key={group.title} group={group} {...shared} />)
-          ) : (
-            <Text style={[styles.empty, { color: colors.textSecondary }]}>{section.empty}</Text>
-          )}
-          {onAdd ? (
-            <Button title={section.addLabel} icon="plus" size="sm" onPress={() => onAdd(section.addKind)} disabled={busy} testID={`datesheet-add-${section.value}`} />
-          ) : null}
+          {section.groups.map((group) => (
+            <Group key={group.title} group={group} {...shared} />
+          ))}
         </View>
       ))}
     </View>
@@ -178,29 +197,31 @@ export function Datesheet({ exams, today, subjectOf, syllabusOf = defaultSyllabu
 }
 
 const styles = StyleSheet.create({
-  sections: { gap: 26 },
+  sections: { gap: 20 },
   section: { gap: 10, alignItems: 'stretch' },
-  sectionHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 4 },
-  sectionTitle: { fontSize: 20, fontWeight: '800' },
-  empty: { fontSize: 14, paddingHorizontal: 4 },
-  group: { gap: 8 },
-  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
-  groupTitle: { fontSize: 16, fontWeight: '700' },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
+  sectionTitle: { fontSize: 15.5, fontWeight: '800' },
+  sectionMeta: { fontSize: 12, marginTop: 1, lineHeight: 16 },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 14, paddingRight: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  groupTitle: { fontSize: 14, fontWeight: '700' },
+  groupMeta: { fontSize: 12, marginTop: 1 },
+  headMain: { paddingVertical: 6 },
   flex: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingRight: 8 },
-  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingVertical: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingRight: 6 },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 12, paddingVertical: 8 },
   headRow: { paddingVertical: 0 },
-  head: { fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
-  dateCol: { width: 34, alignItems: 'center', textAlign: 'center' },
-  dateNum: { fontSize: 18, fontWeight: '700' },
-  dayCol: { width: 34, fontSize: 14 },
-  subjectCol: { flex: 1, gap: 2 },
+  head: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4 },
+  dateCol: { width: 32, alignItems: 'center', textAlign: 'center' },
+  dateNum: { fontSize: 17, fontWeight: '800' },
+  dayCol: { width: 32, fontSize: 13 },
+  subjectCol: { flex: 1, gap: 1 },
   subjectLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  subject: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  next: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  leftCol: { width: 54, textAlign: 'right', fontSize: 13, fontWeight: '600' },
+  subject: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  nextPill: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 },
+  next: { fontSize: 9, fontWeight: '900', letterSpacing: 0.5, color: '#fff' },
+  leftCol: { width: 52, textAlign: 'right', fontSize: 12.5 },
   actions: { flexDirection: 'row', width: 64, justifyContent: 'flex-end' },
   action: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  syllabus: { paddingLeft: 92, paddingRight: 16, paddingBottom: 12, gap: 3 },
-  syllabusHead: { fontSize: 11, fontWeight: '600', letterSpacing: 0.4, marginBottom: 2 },
+  syllabus: { paddingLeft: 85, paddingRight: 14, paddingBottom: 10, gap: 2 },
+  syllabusHead: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4, marginBottom: 2 },
 });

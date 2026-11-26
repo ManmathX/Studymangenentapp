@@ -167,9 +167,9 @@ function CustomSubjectForm({ subject = null, taken, onClose }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 14 },
   flex: { flex: 1 },
-  form: { gap: 12, padding: 14 },
-  chapters: { minHeight: 140 },
+  form: { gap: 10, padding: 14 },
+  chapters: { minHeight: 120 },
   buttons: { flexDirection: 'row', gap: 8 },
 });

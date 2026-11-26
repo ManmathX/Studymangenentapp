@@ -1,25 +1,36 @@
-import { memo } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { memo, useEffect, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Icon } from './Icon';
+import { nativeDriver, Pop, PressableScale, useReducedMotion } from './Motion';
 
 function ChipBase({ label, selected = false, onPress, color, disabled = false, testID }) {
   const { colors, radius } = useTheme();
   return (
-    <Pressable
+    <PressableScale
       testID={testID}
       onPress={onPress}
       disabled={disabled}
+      scaleTo={0.93}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled }}
-      style={({ pressed }) => [
+      style={[
         styles.chip,
-        { borderRadius: radius.pill, backgroundColor: selected ? colors.text : colors.card, borderColor: colors.separator, opacity: disabled ? 0.4 : pressed ? 0.7 : 1 },
+        {
+          borderRadius: radius.pill,
+          backgroundColor: selected ? colors.tint : colors.card,
+          borderColor: selected ? colors.tint : colors.separator,
+          opacity: disabled ? 0.4 : 1,
+        },
       ]}
     >
-      {color ? <View style={[styles.dot, { backgroundColor: color }]} /> : null}
-      <Text style={[styles.chipLabel, { color: selected ? colors.background : colors.text }]}>{label}</Text>
-    </Pressable>
+      {selected ? (
+        <Icon name="check" size={13} color={colors.onTint} strokeWidth={3} />
+      ) : color ? (
+        <View style={[styles.dot, { backgroundColor: color }]} />
+      ) : null}
+      <Text style={[styles.chipLabel, { color: selected ? colors.onTint : colors.text }]}>{label}</Text>
+    </PressableScale>
   );
 }
 export const Chip = memo(ChipBase);
@@ -32,11 +43,42 @@ export function ChipGroup({ children, label }) {
   );
 }
 
-/** iOS-style segmented control. options: [{ value, label, disabled? }]. */
+/** Segmented control with a thumb that slides to the chosen option. options: [{ value, label, disabled? }]. */
 export function SegmentedControl({ options, value, onChange, label }) {
   const { colors, radius } = useTheme();
+  const reduced = useReducedMotion();
+  const [width, setWidth] = useState(0);
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  const [position] = useState(() => new Animated.Value(index));
+  const segment = width ? (width - 6) / options.length : 0;
+
+  useEffect(() => {
+    if (reduced) position.setValue(index);
+    else Animated.spring(position, { toValue: index, useNativeDriver: nativeDriver, speed: 22, bounciness: 6 }).start();
+  }, [index, position, reduced]);
+
   return (
-    <View style={[styles.segment, { backgroundColor: colors.fill, borderRadius: radius.sm }]} accessibilityRole="radiogroup" accessibilityLabel={label}>
+    <View
+      style={[styles.segment, { backgroundColor: colors.fill, borderRadius: radius.md }]}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={label}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+    >
+      {segment ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.thumb,
+            {
+              width: segment,
+              borderRadius: radius.md - 3,
+              backgroundColor: colors.card,
+              boxShadow: colors.shadow,
+              transform: [{ translateX: Animated.multiply(position, segment) }],
+            },
+          ]}
+        />
+      ) : null}
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -46,9 +88,9 @@ export function SegmentedControl({ options, value, onChange, label }) {
             disabled={option.disabled}
             accessibilityRole="radio"
             accessibilityState={{ selected, disabled: option.disabled }}
-            style={[styles.segmentItem, { borderRadius: radius.sm - 2 }, selected && { backgroundColor: colors.card }, option.disabled && { opacity: 0.4 }]}
+            style={[styles.segmentItem, !segment && selected && { backgroundColor: colors.card, borderRadius: radius.md - 3 }, option.disabled && { opacity: 0.4 }]}
           >
-            <Text style={[styles.segmentLabel, { color: colors.text, fontWeight: selected ? '600' : '400' }]} numberOfLines={1}>
+            <Text style={[styles.segmentLabel, { color: selected ? colors.text : colors.textSecondary, fontWeight: selected ? '700' : '500' }]} numberOfLines={1}>
               {option.label}
             </Text>
           </Pressable>
@@ -64,11 +106,42 @@ export function ToggleRow({ label, hint, value, onValueChange, disabled = false,
     <View style={styles.toggleRow}>
       {color ? <View style={[styles.dot, styles.bigDot, { backgroundColor: color }]} /> : null}
       <View style={styles.flex}>
-        <Text style={{ color: colors.text, fontSize: 16 }}>{label}</Text>
-        {hint ? <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>{hint}</Text> : null}
+        <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
+        {hint ? <Text style={[styles.hint, { color: colors.textSecondary }]}>{hint}</Text> : null}
       </View>
-      <Switch value={value} onValueChange={onValueChange} disabled={disabled} accessibilityLabel={label} trackColor={{ true: colors.success }} />
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        accessibilityLabel={label}
+        trackColor={{ true: colors.success, false: colors.fillStrong }}
+        thumbColor="#FFFFFF"
+      />
     </View>
+  );
+}
+
+/** A round tick box that pops when ticked. */
+export function TickBox({ checked, color, size = 24 }) {
+  const { colors } = useTheme();
+  const fill = color ?? colors.tint;
+  return (
+    <Pop trigger={checked}>
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 2,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderColor: checked ? fill : colors.fillStrong,
+          backgroundColor: checked ? fill : 'transparent',
+        }}
+      >
+        {checked ? <Icon name="check" size={size * 0.58} color="#fff" strokeWidth={3.2} /> : null}
+      </View>
+    </Pop>
   );
 }
 
@@ -82,13 +155,11 @@ function CheckRowBase({ label, checked, onToggle, children, disabled = false, te
       accessibilityRole="checkbox"
       accessibilityState={{ checked, disabled }}
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.checkRow, { opacity: pressed ? 0.6 : 1 }]}
+      style={({ pressed }) => [styles.checkRow, { backgroundColor: pressed ? colors.fill : 'transparent' }]}
     >
-      <View style={[styles.box, { borderColor: checked ? colors.tint : colors.fillStrong, backgroundColor: checked ? colors.tint : 'transparent' }]}>
-        {checked ? <Icon name="check" size={14} color={colors.onTint} strokeWidth={3} /> : null}
-      </View>
+      <TickBox checked={checked} size={22} />
       {children}
-      <Text style={[styles.flex, { color: colors.text, fontSize: 16 }]}>{label}</Text>
+      <Text style={[styles.flex, styles.rowLabel, { color: colors.text }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -97,36 +168,40 @@ export const CheckRow = memo(CheckRowBase);
 /** − value + control for small numeric choices. */
 export function Stepper({ label, valueLabel, onDecrement, onIncrement }) {
   const { colors, radius } = useTheme();
+  const button = (text, onPress, a11y) => (
+    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={a11y} scaleTo={0.85} style={[styles.stepperButton, { backgroundColor: colors.card, borderRadius: radius.sm - 3 }]}>
+      <Text style={[styles.stepperText, { color: colors.tintInk }]}>{text}</Text>
+    </PressableScale>
+  );
   return (
     <View style={styles.toggleRow}>
-      <Text style={[styles.flex, { color: colors.text, fontSize: 16 }]}>{label}</Text>
-      <Text style={{ color: colors.text, fontSize: 16, minWidth: 54, textAlign: 'right' }}>{valueLabel}</Text>
+      <Text style={[styles.flex, styles.rowLabel, { color: colors.text }]}>{label}</Text>
       <View style={[styles.stepper, { backgroundColor: colors.fill, borderRadius: radius.sm }]}>
-        <Pressable onPress={onDecrement} accessibilityRole="button" accessibilityLabel={`Less ${label}`} style={styles.stepperButton}>
-          <Text style={[styles.stepperText, { color: colors.text }]}>−</Text>
-        </Pressable>
-        <Pressable onPress={onIncrement} accessibilityRole="button" accessibilityLabel={`More ${label}`} style={styles.stepperButton}>
-          <Text style={[styles.stepperText, { color: colors.text }]}>+</Text>
-        </Pressable>
+        {button('−', onDecrement, `Less ${label}`)}
+        <Text style={[styles.stepperValue, { color: colors.text }]}>{valueLabel}</Text>
+        {button('+', onIncrement, `More ${label}`)}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, minHeight: 34, borderWidth: StyleSheet.hairlineWidth },
-  chipLabel: { fontSize: 14, fontWeight: '500' },
-  chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, minHeight: 34, borderWidth: 1 },
+  chipLabel: { fontSize: 13.5, fontWeight: '600' },
+  chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   bigDot: { width: 10, height: 10, borderRadius: 5 },
-  segment: { flexDirection: 'row', padding: 2 },
-  segmentItem: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 32, paddingHorizontal: 4 },
-  segmentLabel: { fontSize: 13 },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 16, minHeight: 50 },
+  segment: { flexDirection: 'row', padding: 3 },
+  thumb: { position: 'absolute', top: 3, bottom: 3, left: 3 },
+  segmentItem: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 34, paddingHorizontal: 4 },
+  segmentLabel: { fontSize: 13.5 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 14, minHeight: 50 },
+  rowLabel: { fontSize: 15 },
+  hint: { fontSize: 12.5, marginTop: 1, lineHeight: 17 },
   flex: { flex: 1 },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, paddingHorizontal: 16, minHeight: 46 },
-  box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  stepper: { flexDirection: 'row' },
-  stepperButton: { width: 40, height: 32, alignItems: 'center', justifyContent: 'center' },
-  stepperText: { fontSize: 20, fontWeight: '500' },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 14, minHeight: 46 },
+  stepper: { flexDirection: 'row', alignItems: 'center', padding: 3, gap: 2 },
+  stepperButton: { width: 34, height: 30, alignItems: 'center', justifyContent: 'center' },
+  stepperText: { fontSize: 19, fontWeight: '700', lineHeight: 22 },
+  stepperValue: { fontSize: 15, fontWeight: '700', minWidth: 52, textAlign: 'center', fontVariant: ['tabular-nums'] },
 });

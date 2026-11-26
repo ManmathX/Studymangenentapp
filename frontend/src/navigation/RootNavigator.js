@@ -3,6 +3,7 @@ import { LoadingState } from '../components/ui/States';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { ClassStep, SchoolDayStep, SubjectsStep, TaughtStep, TestsStep, WelcomeStep } from '../screens/onboarding/OnboardingSteps';
 import { useAuthStore } from '../store/authStore';
+import { useTheme } from '../theme/ThemeProvider';
 import { MainTabs } from './MainTabs';
 
 const Stack = createNativeStackNavigator();
@@ -14,6 +15,7 @@ const lazy = {
   ScheduleChapter: () => require('../screens/modals/ScheduleChapterScreen').ScheduleChapterScreen,
   NewHomework: () => require('../screens/modals/NewHomeworkScreen').NewHomeworkScreen,
   EditExam: () => require('../screens/modals/EditExamScreen').EditExamScreen,
+  EditTask: () => require('../screens/modals/EditTaskScreen').EditTaskScreen,
   NewDatesheet: () => require('../screens/modals/NewDatesheetScreen').NewDatesheetScreen,
   DeleteAccount: () => require('../screens/account/DeleteAccountScreen').DeleteAccountScreen,
 };
@@ -22,6 +24,14 @@ const lazy = {
 export function RootNavigator() {
   const status = useAuthStore((state) => state.status);
   const onboarded = useAuthStore((state) => state.onboarded);
+  const { colors } = useTheme();
+  // Headers blend into the page: same colour, no shadow line, bold title.
+  const header = {
+    headerStyle: { backgroundColor: colors.background },
+    headerShadowVisible: false,
+    headerTitleStyle: { fontWeight: '800', fontSize: 18, color: colors.text },
+    headerTintColor: colors.tint,
+  };
 
   if (status === 'booting') return <LoadingState label="Restoring your session" />;
 
@@ -36,7 +46,7 @@ export function RootNavigator() {
 
   if (!onboarded) {
     return (
-      <Stack.Navigator screenOptions={{ headerBackTitle: 'Back', title: '', headerShadowVisible: false }}>
+      <Stack.Navigator screenOptions={{ ...header, headerBackTitle: 'Back', title: '' }}>
         <Stack.Screen name="Welcome" component={WelcomeStep} options={{ headerShown: false }} />
         <Stack.Screen name="ClassStep" component={ClassStep} />
         <Stack.Screen name="SubjectsStep" component={SubjectsStep} />
@@ -48,16 +58,17 @@ export function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={header}>
       <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-      <Stack.Screen name="Profile" getComponent={lazy.Profile} options={{ title: 'Profile', headerBackTitle: 'Back' }} />
+      <Stack.Screen name="Profile" getComponent={lazy.Profile} options={{ title: 'My Profile', headerBackTitle: 'Back' }} />
       <Stack.Group screenOptions={{ presentation: 'modal' }}>
-        <Stack.Screen name="Syllabus" getComponent={lazy.Syllabus} options={{ title: 'Syllabus' }} />
-        <Stack.Screen name="ScheduleChapter" getComponent={lazy.ScheduleChapter} options={{ title: 'Schedule' }} />
-        <Stack.Screen name="NewHomework" getComponent={lazy.NewHomework} options={{ title: 'New Homework' }} />
-        <Stack.Screen name="EditExam" getComponent={lazy.EditExam} options={{ title: 'Edit Paper' }} />
-        <Stack.Screen name="NewDatesheet" getComponent={lazy.NewDatesheet} options={{ title: 'Add to Datesheet' }} />
-        <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete Account' }} />
+        <Stack.Screen name="Syllabus" getComponent={lazy.Syllabus} options={{ title: 'Pick a chapter' }} />
+        <Stack.Screen name="ScheduleChapter" getComponent={lazy.ScheduleChapter} options={{ title: 'Plan this chapter' }} />
+        <Stack.Screen name="NewHomework" getComponent={lazy.NewHomework} options={{ title: 'Add homework' }} />
+        <Stack.Screen name="EditExam" getComponent={lazy.EditExam} options={{ title: 'Edit test' }} />
+        <Stack.Screen name="EditTask" getComponent={lazy.EditTask} options={{ title: 'Edit task' }} />
+        <Stack.Screen name="NewDatesheet" getComponent={lazy.NewDatesheet} options={{ title: 'Add a test' }} />
+        <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete account' }} />
       </Stack.Group>
     </Stack.Navigator>
   );

@@ -13,7 +13,7 @@ const ExamRow = memo(function ExamRow({ exam, onEdit, onRemove, busy }) {
   const subjectOf = useSubjectInfo();
   return (
     <View style={styles.row} accessibilityLabel={`${exam.name} in ${exam.daysLeft} days, ${exam.readiness.revised} of ${exam.readiness.total} chapters revised`}>
-      <View style={styles.days}>
+      <View style={[styles.days, { backgroundColor: `${subjectOf(exam.subject).color}1A` }]}>
         <Text style={[styles.daysNumber, { color: subjectOf(exam.subject).color }]}>{exam.daysLeft}</Text>
         <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{exam.daysLeft === 1 ? 'day' : 'days'}</Text>
       </View>
@@ -68,7 +68,7 @@ const ExamRow = memo(function ExamRow({ exam, onEdit, onRemove, busy }) {
 
 /** Upcoming tests. Pass `onEdit` / `onRemove` to show edit and remove buttons on each row. */
 export function ExamList({ exams, onEdit, onRemove, busy = false }) {
-  if (!exams.length) return <EmptyState message="No tests coming up. Add one so the planner can plan revision." />;
+  if (!exams.length) return <EmptyState icon="trophy" message="No tests coming up. Add one so the planner can plan revision." />;
   return exams.map((exam, index) => (
     <View key={exam.id}>
       {index ? <Divider /> : null}
@@ -78,12 +78,12 @@ export function ExamList({ exams, onEdit, onRemove, busy = false }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 12, padding: 16 },
-  days: { width: 40, alignItems: 'center' },
-  daysNumber: { fontSize: 24, fontWeight: '700' },
-  body: { flex: 1, gap: 3 },
-  name: { fontSize: 16, fontWeight: '600' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  row: { flexDirection: 'row', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+  days: { width: 44, paddingVertical: 4, borderRadius: 12, alignItems: 'center' },
+  daysNumber: { fontSize: 21, fontWeight: '800' },
+  body: { flex: 1, gap: 2 },
+  name: { fontSize: 15, fontWeight: '700' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 },
   ready: { alignItems: 'flex-end' },
   readyNumber: { fontSize: 15, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: 2, marginTop: 6 },

@@ -38,6 +38,12 @@ export const taskActions = {
     run(() => tasksApi.update(task.id, { date }), { success: `Moved to ${dayName(date, today)}.` }),
   accept: (task) => run(() => tasksApi.accept(task.id), { success: 'Added to your plan.' }),
   skip: (task) => run(() => tasksApi.skip(task.id), { success: 'Skipped.' }),
+  edit: (task, changes, today) =>
+    run(() => tasksApi.update(task.id, changes), {
+      success: (result) => (result.task.date !== task.date ? `Saved and moved to ${dayName(result.task.date, today)}.` : 'Task saved.'),
+    }),
+  keep: (task) => run(() => tasksApi.accept(task.id), { success: 'Kept in your plan.' }),
+  remove: (task) => run(() => tasksApi.skip(task.id), { success: 'Removed from your plan.' }),
   swap: (task, today) => run(() => tasksApi.swap(task.id), { success: (updated) => `Swapped to ${dayName(updated.date, today)} and added.` }),
   moveToBestDay: (task, today) => run(() => tasksApi.move(task.id), { success: (updated) => `Moved to ${dayName(updated.date, today)}.` }),
 };

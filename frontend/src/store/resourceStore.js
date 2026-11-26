@@ -27,20 +27,27 @@ export const useResourceStore = create((set, get) => ({
     const current = get().entry(key);
     const fresh = current.status === 'success' && Date.now() - current.fetchedAt < STALE_AFTER_MS;
     if (!force && fresh) return current.data;
-    if (inFlight.has(key)) return inFlight.get(key);
+    // A forced fetch follows a change, so a request already in flight may carry
+    // data from before it. Reuse it only for unforced reads.
+    if (!force && inFlight.has(key)) return inFlight.get(key);
 
     set((state) => ({ entries: { ...state.entries, [key]: { ...current, status: current.data === undefined ? 'loading' : 'refreshing', error: null } } }));
+    // Only the newest request for a key may write its result, so an older,
+    // slower response can't overwrite fresher data.
+    const isLatest = () => inFlight.get(key) === promise;
     const promise = loader()
       .then((data) => {
-        set((state) => ({ entries: { ...state.entries, [key]: { data, error: null, status: 'success', fetchedAt: Date.now() } } }));
+        if (isLatest()) set((state) => ({ entries: { ...state.entries, [key]: { data, error: null, status: 'success', fetchedAt: Date.now() } } }));
         return data;
       })
       .catch((error) => {
         const apiError = toApiError(error);
-        set((state) => ({ entries: { ...state.entries, [key]: { ...get().entry(key), status: 'error', error: apiError } } }));
+        if (isLatest()) set((state) => ({ entries: { ...state.entries, [key]: { ...get().entry(key), status: 'error', error: apiError } } }));
         throw apiError;
       })
-      .finally(() => inFlight.delete(key));
+      .finally(() => {
+        if (isLatest()) inFlight.delete(key);
+      });
     inFlight.set(key, promise);
     return promise;
   },

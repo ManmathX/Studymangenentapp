@@ -5,7 +5,7 @@ import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
 import { Chip, ChipGroup, SegmentedControl } from '../../components/ui/Controls';
 import { FormField } from '../../components/ui/Field';
-import { Muted, Screen, Section } from '../../components/ui/Layout';
+import { BLOCK_GAP, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useResource } from '../../hooks/useResource';
 import { homeworkActions } from '../../services/actions';
@@ -43,10 +43,10 @@ export function HomeworkForm({ profile, onDone, submit = homeworkActions.create 
   });
 
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: BLOCK_GAP }}>
       <FormField control={control} name="title" rules={rules.title('Write what the homework is, for example "Exercise 8.2".')} label="What to do" placeholder="e.g. Exercise 8.2" />
       <FormField control={control} name="note" rules={{ maxLength: { value: 500, message: 'Keep the note under 500 characters' } }} label="Teacher’s note (optional)" placeholder="Anything the teacher said" multiline />
-      <Section title="Subject" bare>
+      <Section title="Subject" icon="book" bare>
         <Controller
           control={control}
           name="subject"
@@ -59,10 +59,10 @@ export function HomeworkForm({ profile, onDone, submit = homeworkActions.create 
           )}
         />
       </Section>
-      <Section title="Due" bare>
+      <Section title="When is it due?" icon="today" bare>
         <Controller control={control} name="due" render={({ field: { value, onChange } }) => <DayPicker days={days} value={value} onChange={onChange} today={today} />} />
       </Section>
-      <Section title="Time needed" bare>
+      <Section title="How long will it take?" icon="clock" bare>
         <Controller
           control={control}
           name="mins"
@@ -75,7 +75,7 @@ export function HomeworkForm({ profile, onDone, submit = homeworkActions.create 
           )}
         />
       </Section>
-      <Section title="Difficulty" bare>
+      <Section title="How hard is it?" icon="bolt" bare>
         <Controller
           control={control}
           name="difficulty"
@@ -86,7 +86,7 @@ export function HomeworkForm({ profile, onDone, submit = homeworkActions.create 
       </Section>
       {errors.root ? <Text style={{ color: colors.danger }}>{errors.root.message}</Text> : null}
       <Muted small>The planner adds a task the day before it’s due. You can move it in Plan.</Muted>
-      <Button title="Add homework" variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="homework-submit" />
+      <Button title="Add homework" icon="plus" variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="homework-submit" />
     </View>
   );
 }

@@ -1,5 +1,5 @@
 // Originally ported from the retired backend's planner.types.ts. This copy is now the source of truth.
-export const CHAPTER_STATUSES = ['not', 'learning', 'revised', 'mastered'];
+export const CHAPTER_STATUSES = ['not', 'learning', 'practiced', 'revised', 'mastered'];
 /** Slot types on the calendar: self study (learning new material), revision, practice and homework. */
 export const TASK_KINDS = ['study', 'revision', 'practice', 'homework'];
 export const TASK_STATUSES = ['accepted', 'suggested', 'skipped'];

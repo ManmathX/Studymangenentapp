@@ -38,7 +38,7 @@ export function DeleteAccountScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 14 }}>
+      <View style={{ gap: 12 }}>
         <Card style={{ gap: 6 }}>
           <Text style={{ color: colors.danger, fontSize: 17, fontWeight: '700' }}>This can’t be undone</Text>
           <Muted small>Deleting your account removes, straight away and for good:</Muted>

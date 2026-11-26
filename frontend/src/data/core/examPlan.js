@@ -26,6 +26,8 @@ export function examStepsFor(chapter) {
         { kind: 'homework', mins: 40, title: `Homework: ${exercises}` },
         { kind: 'revision', mins: 20, title: 'Revision: notes and key points' },
       ];
+    case 'practiced':
+      return [{ kind: 'revision', mins: 20, title: 'Revision: notes and key points' }];
     case 'revised':
       return [
         { kind: 'homework', mins: 30, title: 'Homework: practice questions' },

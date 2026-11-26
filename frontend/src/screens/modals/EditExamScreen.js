@@ -5,7 +5,7 @@ import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
 import { CheckRow, Chip, ChipGroup } from '../../components/ui/Controls';
 import { FormField } from '../../components/ui/Field';
-import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
+import { BLOCK_GAP, Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useResource } from '../../hooks/useResource';
 import { examActions } from '../../services/actions';
@@ -63,9 +63,9 @@ function ExamForm({ profile, exam, onDone }) {
   });
 
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: BLOCK_GAP }}>
       <FormField control={control} name="name" rules={rules.title('Give the test a name.')} label="Paper name" placeholder={`${subjectOf(subject).name} unit test`} />
-      <Section title="Subject" bare>
+      <Section title="Subject" icon="book" bare>
         <Controller
           control={control}
           name="subject"
@@ -88,10 +88,10 @@ function ExamForm({ profile, exam, onDone }) {
           )}
         />
       </Section>
-      <Section title="Date" bare>
+      <Section title="Date" icon="today" bare>
         <Controller control={control} name="date" render={({ field: { value, onChange } }) => <DayPicker days={days} value={value} onChange={onChange} today={today} />} />
       </Section>
-      <Section title="Weight in term grade" bare>
+      <Section title="Weight in term grade" icon="chart" bare>
         <Controller
           control={control}
           name="weight"
@@ -104,7 +104,7 @@ function ExamForm({ profile, exam, onDone }) {
           )}
         />
       </Section>
-      <Section title="Chapters in the syllabus" bare>
+      <Section title="Chapters in the syllabus" icon="list" bare>
         <Controller
           control={control}
           name="chapterKeys"

@@ -2,7 +2,7 @@ import { GOOGLE_WEB_CLIENT_ID } from '../config/env';
 
 /**
  * Google sign-in on the web build, using Google Identity Services ("Sign in with Google").
- * Google renders its own button (see screens/auth/GoogleButton.web.js) and hands back an ID
+ * Google renders its own button (drawn invisibly over ours in screens/auth/GoogleButton.js) and hands back an ID
  * token for the web client, the same token the Android and iOS apps send to the API.
  * The page's origin must be listed under "Authorized JavaScript origins" on that client.
  */

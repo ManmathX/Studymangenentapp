@@ -308,6 +308,48 @@ describe('chapters', () => {
     await expect(chaptersApi.addRevision('maths-6')).rejects.toMatchObject({ code: 'NO_REVISION_DUE' });
     expect((await chaptersApi.snooze('maths-5')).snoozedUntil).toBe('2026-11-19');
   });
+
+  it('shows chapters ticked at setup or marked later as Studied in the progress bars', async () => {
+    await onboarded();
+    const progress = await dashboardApi.progress();
+    expect(progress.coverage.counts).toMatchObject({ learning: 3, practiced: 0 });
+    expect(progress.subjects.find((item) => item.subject === 'maths').coverage.counts.learning).toBe(2);
+
+    await chaptersApi.setStatus('maths-4', 'learning');
+    expect((await dashboardApi.progress()).coverage.counts.learning).toBe(4);
+  });
+
+  it('shows today’s suggested blocks in Today’s plan, and ticking one done keeps it', async () => {
+    await onboarded();
+    write((draft) => {
+      draft.tasks.push({ id: 'sugg-1', date: TODAY, subject: 'maths', title: 'Revision: Polynomials', kind: 'revision', mins: 20, deadline: TODAY, score: 5, why: 'Test soon', chapterKey: null, homeworkId: null, source: 'app', status: 'suggested', done: false, order: 99 });
+    });
+    const today = await dashboardApi.today();
+    expect(today.tasks.map(({ task }) => task.id)).toContain('sugg-1');
+    const { task } = await tasksApi.update('sugg-1', { done: true });
+    expect(task).toMatchObject({ done: true, status: 'accepted' });
+  });
+
+  it('lets the student edit any task’s title, length and day; editing a suggestion keeps it', async () => {
+    await onboarded();
+    write((draft) => {
+      draft.tasks.push({ id: 'sugg-2', date: TODAY, subject: 'maths', title: 'Revision: Polynomials', kind: 'revision', mins: 20, deadline: TODAY, score: 5, why: '', chapterKey: null, homeworkId: null, source: 'app', status: 'suggested', done: false, order: 99 });
+    });
+    const { task } = await tasksApi.update('sugg-2', { title: '  Polynomials: past paper  ', mins: 45, date: '2026-11-20' });
+    expect(task).toMatchObject({ title: 'Polynomials: past paper', mins: 45, date: '2026-11-20', status: 'accepted' });
+    await expect(tasksApi.update('sugg-2', { title: '   ' })).rejects.toMatchObject({ code: expect.any(String) });
+    await expect(tasksApi.update('sugg-2', { mins: 2 })).rejects.toMatchObject({ code: expect.any(String) });
+    await expect(tasksApi.update('sugg-2', { date: addDays(TODAY, 30) })).rejects.toMatchObject({ code: 'DATE_OUT_OF_RANGE' });
+    expect((await tasksApi.skip('sugg-2')).status).toBe('skipped');
+  });
+
+  it('moves a Studied chapter to Practiced once a practice or homework step is done', async () => {
+    await onboarded();
+    const step = read().tasks.find((task) => task.chapterKey === 'maths-1' && (task.kind === 'homework' || task.kind === 'practice'));
+    const { chapter } = await tasksApi.update(step.id, { done: true });
+    expect(chapter).toMatchObject({ key: 'maths-1', status: 'practiced' });
+    expect((await dashboardApi.progress()).coverage.counts).toMatchObject({ learning: 2, practiced: 1 });
+  });
 });
 
 describe('daily homework and self study slots', () => {

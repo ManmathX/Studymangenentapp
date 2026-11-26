@@ -3,12 +3,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSubjectInfo } from '../../store/subjectStore';
 import { chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
-import { Hatch } from './Hatch';
 
 export const StatusDot = memo(function StatusDot({ status, size = 10 }) {
   const { colors } = useTheme();
   const info = chapterStatus[status];
-  const color = info?.hatch ? null : info?.color;
+  const color = info?.color;
   return (
     <View
       accessibilityLabel={info?.label}
@@ -18,12 +17,10 @@ export const StatusDot = memo(function StatusDot({ status, size = 10 }) {
         borderRadius: size / 2,
         overflow: 'hidden',
         backgroundColor: color ?? 'transparent',
-        borderWidth: color ? 0 : info?.hatch ? 1 : 1.5,
+        borderWidth: color ? 0 : 1.5,
         borderColor: colors.fillStrong,
       }}
-    >
-      {info?.hatch ? <Hatch gap={3} /> : null}
-    </View>
+    />
   );
 });
 
@@ -33,7 +30,7 @@ export const SubjectDot = memo(function SubjectDot({ subject, size = 8, color })
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? subjectOf(subject).color }} />;
 });
 
-const TAG_COLORS = { app: '#007AFF', teacher: '#AF52DE', parent: '#FF9500', high: '#FF3B30', medium: '#FF9500', suggested: '#007AFF' };
+const TAG_COLORS = { app: '#5B4CF0', teacher: '#A855F7', parent: '#F59E0B', high: '#F43F5E', medium: '#F59E0B', suggested: '#5B4CF0' };
 
 export const Tag = memo(function Tag({ label, kind }) {
   const color = TAG_COLORS[kind] ?? '#8E8E93';
@@ -73,6 +70,6 @@ export function ChapterChip({ name, status }) {
 
 const styles = StyleSheet.create({
   tag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  tagText: { fontSize: 11, fontWeight: '700' },
-  chapterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, maxWidth: 220 },
+  tagText: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.2 },
+  chapterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, maxWidth: 220 },
 });

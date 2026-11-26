@@ -91,8 +91,8 @@ function TuitionCard({ tuition, index, onChange, onRemove }) {
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 12 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 8, paddingTop: 10 },
-  title: { flex: 1, fontSize: 16, fontWeight: '600' },
-  body: { paddingHorizontal: 16, paddingBottom: 14, gap: 10 },
+  stack: { gap: 10 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 14, paddingRight: 6, paddingTop: 8 },
+  title: { flex: 1, fontSize: 15, fontWeight: '700' },
+  body: { paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
 });

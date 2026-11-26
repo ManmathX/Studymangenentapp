@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
 import { CheckRow, SegmentedControl } from '../../components/ui/Controls';
-import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
+import { Card, Divider, Muted, Screen, Section, Stack } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useResource } from '../../hooks/useResource';
 import { chapterActions } from '../../services/actions';
@@ -55,7 +55,7 @@ function ScheduleForm({ data, today, navigation }) {
   });
 
   return (
-    <>
+    <Stack>
       <Card>
         <Text style={{ color: subjectOf(chapter.subject).color, fontWeight: '700' }}>{subjectOf(chapter.subject).name}</Text>
         <Text style={[styles.title, { color: colors.text }]}>{chapter.name}</Text>
@@ -64,17 +64,17 @@ function ScheduleForm({ data, today, navigation }) {
         </Muted>
       </Card>
 
-      <Section title="Where you are" bare>
+      <Section title="How well do you know it?" icon="target" bare>
         <SegmentedControl
           label="Chapter status"
           value={chapter.status}
           onChange={(status) => chapterActions.setStatus(chapter, status)}
-          options={CHAPTER_STATUS_ORDER.map((status) => ({ value: status, label: chapterStatus[status].label }))}
+          options={CHAPTER_STATUS_ORDER.map((status) => ({ value: status, label: chapterStatus[status].short }))}
         />
       </Section>
 
       {data.alreadyPlanned.length ? (
-        <Section title="Already planned" flush>
+        <Section title="Already planned" icon="check" flush>
           {data.alreadyPlanned.map((task, index) => (
             <View key={task.id}>
               {index ? <Divider /> : null}
@@ -89,10 +89,13 @@ function ScheduleForm({ data, today, navigation }) {
         </Section>
       ) : null}
 
-      <Section title="Steps to add" bare footer={`The planner picked days with free time${exam ? ' before your test' : ''}. Change any day, or untick a step you don’t need.`}>
+      <Section title="Steps to add" icon="list" bare footer={`The planner picked days with free time${exam ? ' before your test' : ''}. Change any day, or untick a step you don’t need.`}>
         <View style={{ gap: 10 }}>
           {fields.map((field, index) => {
             const step = data.steps[index];
+            // After a status change the proposal can shrink before the reset effect
+            // syncs the form, so fields may briefly outnumber data.steps.
+            if (!step) return null;
             return (
               <Card key={field.id} flush>
                 <Controller
@@ -113,14 +116,14 @@ function ScheduleForm({ data, today, navigation }) {
         </View>
       </Section>
       {errors.root ? <Text style={{ color: colors.danger }}>{errors.root.message}</Text> : null}
-      <Button title="Add to plan" variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="schedule-submit" />
-    </>
+      <Button title="Add to plan" icon="check" variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="schedule-submit" />
+    </Stack>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: '700', marginVertical: 4 },
-  planned: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14 },
+  title: { fontSize: 20, fontWeight: '800', marginVertical: 2 },
+  planned: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 14 },
   flex: { flex: 1 },
-  dayRow: { paddingHorizontal: 12, paddingBottom: 12 },
+  dayRow: { paddingHorizontal: 12, paddingBottom: 10 },
 });

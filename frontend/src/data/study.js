@@ -579,17 +579,26 @@ export function snoozeChapter(key) {
 /* ---------- Tasks ---------- */
 
 /**
- * Marks done or not done, or moves to another day. Finishing a homework task can close the
- * homework; finishing a chapter step moves an unstarted chapter to "learning".
+ * Marks done or not done, moves to another day, or changes the title or length (5 to 240 min). Finishing a homework task can close the
+ * homework; finishing a chapter step moves an unstarted chapter to "learning" (Studied), and finishing
+ * a practice or homework step for it moves it on to "practiced". Finishing a suggested block keeps it.
  */
 export function updateTask(id, patch) {
-  if (patch?.done === undefined && patch?.date === undefined) throw badRequest('Send done or date');
+  if (['done', 'date', 'title', 'mins'].every((field) => patch?.[field] === undefined)) throw badRequest('Send done, date, title or mins');
   return write((draft) => {
     const { today } = studentDay(draft);
     const task = requireTask(draft, id);
     if (patch.date !== undefined && dateKey(patch.date, 'date') < today) throw badRequest('Pick today or a later day', 'DATE_IN_PAST');
+    if (patch.date !== undefined && patch.date > addDays(today, PLANNING_HORIZON_DAYS)) throw badRequest('Pick a day in the next two weeks', 'DATE_OUT_OF_RANGE');
+    const title = patch.title !== undefined ? text(patch.title, 'title', { max: 140, required: 'Write what the task is' }) : undefined;
+    const mins = patch.mins !== undefined ? intIn(patch.mins, 5, 240, 'mins') : undefined;
     const wasDone = task.done;
+    if (title !== undefined) task.title = title;
+    if (mins !== undefined) task.mins = mins;
     if (patch.done !== undefined) task.done = Boolean(patch.done);
+    // Editing a suggested block makes it the student's own.
+    if (title !== undefined || mins !== undefined || patch.date !== undefined) task.status = task.status === 'skipped' ? task.status : 'accepted';
+    if (task.done && task.status === 'suggested') task.status = 'accepted';
     if (patch.date !== undefined) task.date = patch.date;
 
     let homework = null;
@@ -604,6 +613,10 @@ export function updateTask(id, patch) {
       const current = task.chapterKey ? draft.chapters.find((entry) => entry.key === task.chapterKey) : null;
       if (current?.status === 'not') {
         Object.assign(current, { status: 'learning', learnedOn: today, revisions: 0 });
+        chapter = chapterDto(current);
+      }
+      if (current?.status === 'learning' && (task.kind === 'practice' || task.kind === 'homework')) {
+        current.status = 'practiced';
         chapter = chapterDto(current);
       }
     }

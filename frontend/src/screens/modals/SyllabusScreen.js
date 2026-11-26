@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Chip, ChipGroup } from '../../components/ui/Controls';
 import { Input } from '../../components/ui/Field';
 import { Icon } from '../../components/ui/Icon';
-import { Card, Divider, Muted, Screen } from '../../components/ui/Layout';
+import { Card, Divider, Muted, Screen, Stack } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
@@ -29,7 +29,7 @@ function SyllabusBody({ profile, navigation }) {
   const chapters = useResource(resources.chapters(subject));
   const subjectOf = useSubjectInfo();
   return (
-    <>
+    <Stack>
       <ChipGroup label="Subject">
         {profile.subjects.map((id) => (
           <Chip key={id} label={subjectOf(id).name} color={subjectOf(id).color} selected={subject === id} onPress={() => setSubject(id)} />
@@ -48,10 +48,10 @@ function SyllabusBody({ profile, navigation }) {
         )}
       </AsyncBoundary>
       <Muted small>
-        Class {profile.cls} {profile.boardName ?? profile.board}. Pick a chapter to schedule it.
+        Class {profile.cls} {profile.boardName ?? profile.board}. 1. Pick a subject above. 2. Tap a chapter to plan when you’ll study it.
       </Muted>
       <AddSubject onAdded={setSubject} />
-    </>
+    </Stack>
   );
 }
 
@@ -111,9 +111,9 @@ const ChapterRow = memo(function ChapterRow({ chapter, onPress }) {
 });
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, minHeight: 46 },
-  name: { flex: 1, fontSize: 16 },
-  form: { gap: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 14, minHeight: 46 },
+  name: { flex: 1, fontSize: 15, fontWeight: '600' },
+  form: { gap: 10 },
   chapters: { minHeight: 120 },
   buttons: { flexDirection: 'row', gap: 8 },
 });
