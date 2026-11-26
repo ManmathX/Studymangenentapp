@@ -1,9 +1,8 @@
-import mongoose from 'mongoose';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { UnauthorizedError } from '../../src/common/errors/app-error.js';
 import type { GoogleIdTokenVerifier } from '../../src/modules/auth/google.service.js';
-import { as, PASSWORD, register, useTestApp } from '../helpers/app.js';
+import { as, PASSWORD, register, staff, useTestApp } from '../helpers/app.js';
 
 /** Accepts tokens shaped `good:<sub>:<email>[:unverified]`, rejects everything else. */
 const fakeGoogle: GoogleIdTokenVerifier = {
@@ -21,18 +20,6 @@ const fakeGoogle: GoogleIdTokenVerifier = {
 };
 
 const ctx = useTestApp('catalog', {}, { googleVerifier: fakeGoogle });
-
-async function admin() {
-  const session = await register(ctx.app, 'Admin');
-  await mongoose.connection
-    .collection('users')
-    .updateOne({ _id: new mongoose.Types.ObjectId(session.userId) }, { $set: { role: 'admin' } });
-  const login = await request(ctx.app)
-    .post('/api/v1/auth/login')
-    .send({ email: session.email, password: PASSWORD })
-    .expect(200);
-  return as(ctx.app, login.body.data.tokens.accessToken as string);
-}
 
 describe('syllabus catalogue', () => {
   it('starts with CBSE and ICSE loaded for classes 6 to 12', async () => {
@@ -57,123 +44,240 @@ describe('syllabus catalogue', () => {
     await user.get('/syllabus/classes?board=nowhere').expect(404);
   });
 
-  it('loads the standard syllabus into an existing catalogue without touching edits', async () => {
-    const boss = await admin();
-    const subjects = await boss.get('/admin/syllabus/boards/icse/classes/7/subjects').expect(200);
-    const maths = subjects.body.data.find((s: { subjectId: string }) => s.subjectId === 'maths');
-    await boss.patch(`/admin/syllabus/subjects/${maths.id}`, { name: 'Mathematics' }).expect(200);
-    const physics = subjects.body.data.find(
-      (s: { subjectId: string }) => s.subjectId === 'physics',
-    );
-    await boss.delete(`/admin/syllabus/subjects/${physics.id}`).expect(204);
+  it('loads the standard syllabus into drafts without touching edits', async () => {
+    const boss = (await staff(ctx.app, 'admin')).api;
+    const { accessToken } = await register(ctx.app);
+    const student = as(ctx.app, accessToken);
+    const publishedOf = async (exam: string) =>
+      (await boss.get(`/admin/exams/${exam}/syllabi`).expect(200)).body.data.find(
+        (v: { status: string }) => v.status === 'published',
+      ).id as string;
+    const draftOf = async (exam: string) =>
+      (await boss.post(`/admin/syllabi/${await publishedOf(exam)}/duplicate`, {}).expect(201)).body
+        .data.version.id as string;
+    type Subject = {
+      id: string;
+      subjectId: string;
+      name: string;
+      revision: number;
+      units: { chapters: object[] }[];
+    };
+    const subjectAt = async (syllabus: string, level: string, subjectId: string) => {
+      const list = (
+        await boss.get(`/admin/syllabi/${syllabus}/subjects?level=${level}`).expect(200)
+      ).body.data as Subject[];
+      return list.find((s) => s.subjectId === subjectId)!;
+    };
 
-    // An older catalogue: CBSE class 7 maths without book names and missing Part 2.
-    const cbse7 = await boss.get('/admin/syllabus/boards/cbse/classes/7/subjects').expect(200);
-    const cbseMaths = cbse7.body.data.find((s: { subjectId: string }) => s.subjectId === 'maths');
+    // ICSE draft: maths renamed, physics deleted.
+    const icse = await draftOf('icse');
+    const icseMaths = await subjectAt(icse, '7', 'maths');
     await boss
-      .patch(`/admin/syllabus/subjects/${cbseMaths.id}`, {
-        chapters: [
-          { name: 'My own revision chapter' },
-          { name: 'Large Numbers Around Us', difficulty: 3 },
+      .put(`/admin/syllabus-subjects/${icseMaths.id}`, {
+        revision: icseMaths.revision,
+        name: 'Mathematics',
+        units: icseMaths.units,
+      })
+      .expect(200);
+    await boss
+      .delete(`/admin/syllabus-subjects/${(await subjectAt(icse, '7', 'physics')).id}`)
+      .expect(204);
+
+    // CBSE draft: class 7 maths without book names and missing Part 2.
+    const cbse = await draftOf('cbse');
+    const cbseMaths = await subjectAt(cbse, '7', 'maths');
+    await boss
+      .put(`/admin/syllabus-subjects/${cbseMaths.id}`, {
+        revision: cbseMaths.revision,
+        units: [
+          {
+            name: '',
+            chapters: [
+              { name: 'My own revision chapter' },
+              { name: 'Large Numbers Around Us', difficulty: 3 },
+            ],
+          },
         ],
       })
       .expect(200);
 
-    const loaded = await boss.post('/admin/syllabus/standard', {}).expect(200);
-    expect(loaded.body.data).toEqual({ added: 1, updated: 1 });
-    const merged = (
-      await boss.get('/admin/syllabus/boards/cbse/classes/7/subjects').expect(200)
-    ).body.data.find((s: { subjectId: string }) => s.subjectId === 'maths').chapters;
+    const loaded = await boss.post('/admin/exams/standard', {}).expect(200);
+    expect(loaded.body.data).toMatchObject({ added: 1, updated: 1 });
+    expect(loaded.body.data.drafts).toEqual([
+      { exam: 'cbse', syllabusId: cbse },
+      { exam: 'icse', syllabusId: icse },
+    ]);
+    const merged = (await subjectAt(cbse, '7', 'maths')).units[0]!.chapters;
     expect(merged).toHaveLength(16);
-    expect(merged[0]).toEqual({
+    expect(merged[0]).toMatchObject({
       name: 'Large Numbers Around Us',
       difficulty: 3,
       book: 'Ganita Prakash – Part 1',
     });
     expect(merged[8]).toMatchObject({ name: 'Geometric Twins', book: 'Ganita Prakash – Part 2' });
-    expect(merged[15]).toEqual({ name: 'My own revision chapter', difficulty: 2 });
-    const after = await boss.get('/admin/syllabus/boards/icse/classes/7/subjects').expect(200);
-    expect(after.body.data.map((s: { name: string }) => s.name)).toContain('Mathematics');
-    expect(after.body.data.map((s: { subjectId: string }) => s.subjectId)).toContain('physics');
+    expect(merged[15]).toMatchObject({ name: 'My own revision chapter', difficulty: 2 });
+    expect((await subjectAt(icse, '7', 'maths')).name).toBe('Mathematics');
+    expect(await subjectAt(icse, '7', 'physics')).toBeDefined();
 
-    const again = await boss.post('/admin/syllabus/standard', {}).expect(200);
-    expect(again.body.data).toEqual({ added: 0, updated: 0 });
+    // Students see the change only once the draft is published.
+    const before = await student.get('/syllabus/7?board=cbse').expect(200);
+    expect(before.body.data.find((s: { id: string }) => s.id === 'maths').chapters).toHaveLength(
+      15,
+    );
+    await boss.post(`/admin/syllabi/${cbse}/publish`, {}).expect(200);
+    const after = await student.get('/syllabus/7?board=cbse').expect(200);
+    const maths = after.body.data.find((s: { id: string }) => s.id === 'maths');
+    expect(maths.chapters).toHaveLength(16);
+    expect(maths.chapters[15]).toEqual({
+      key: 'maths-16',
+      name: 'My own revision chapter',
+      difficulty: 2,
+    });
+
+    const again = await boss.post('/admin/exams/standard', {}).expect(200);
+    expect(again.body.data).toMatchObject({ added: 0, updated: 0 });
   });
 
-  it('counts the seeded classes on the very first admin request', async () => {
-    const boss = await admin();
-    const overview = await boss.get('/admin/syllabus/boards').expect(200);
-    expect(overview.body.data[0]).toMatchObject({ code: 'cbse' });
-    expect(overview.body.data[0].classes).toContainEqual({ cls: 9, subjects: 5 });
+  it('counts boards, exams and syllabi on the dashboard', async () => {
+    const boss = (await staff(ctx.app, 'admin')).api;
+    const overview = await boss.get('/admin/dashboard').expect(200);
+    // CBSE and ICSE published; NIOS, 27 state boards and 8 competitive exams set up as drafts.
+    expect(overview.body.data.totals).toEqual({
+      boards: 30,
+      competitive: 8,
+      exams: 38,
+      active: 38,
+      inactive: 0,
+      draftSyllabi: 36,
+      publishedSyllabi: 2,
+    });
+    expect(overview.body.data.content.subjects).toBeGreaterThan(80);
+    expect(overview.body.data.content.chapters).toBeGreaterThan(1000);
+    expect(overview.body.data.years).toEqual(['2026-27']);
+    const engineering = await boss.get('/admin/dashboard?category=engineering').expect(200);
+    expect(engineering.body.data.totals).toMatchObject({
+      boards: 0,
+      competitive: 2,
+      publishedSyllabi: 0,
+    });
+    expect(engineering.body.data.byCategory).toEqual([
+      expect.objectContaining({ code: 'engineering', exams: 2, published: 0 }),
+    ]);
+    const other = await boss.get('/admin/dashboard?year=2030-31').expect(200);
+    expect(other.body.data.totals.exams).toBe(0);
   });
 
   it('lets an admin build a state board class that students can then pick', async () => {
-    const boss = await admin();
+    const boss = (await staff(ctx.app, 'admin')).api;
     const { accessToken } = await register(ctx.app);
     const student = as(ctx.app, accessToken);
-    await student.post('/admin/syllabus/boards', { name: 'X', kind: 'state' }).expect(403);
+    await student.post('/admin/exams', { name: 'X', category: 'school-boards' }).expect(403);
 
-    const board = await boss
-      .post('/admin/syllabus/boards', { name: 'Odisha Board', kind: 'state' })
-      .expect(201);
-    expect(board.body.data).toMatchObject({ code: 'odisha-board', kind: 'state' });
-
-    const odia = await boss
-      .post('/admin/syllabus/boards/odisha-board/classes/8/subjects', {
-        name: 'Odia',
-        chapters: [{ name: 'Bande Utkala Janani' }, { name: 'Utkala Gaurab', difficulty: 3 }],
+    const classes = [6, 7, 8, 9, 10, 11, 12].map((n) => ({
+      key: String(n),
+      name: `Class ${n}`,
+      grade: n,
+    }));
+    const created = await boss
+      .post('/admin/exams', {
+        name: 'Odisha Board',
+        category: 'school-boards',
+        region: 'state',
+        state: 'Odisha',
+        structure: { levelLabel: 'Class', levels: classes },
       })
       .expect(201);
-    expect(odia.body.data).toMatchObject({ subjectId: 'odia', position: 0, cls: 8 });
+    expect(created.body.data.exam).toMatchObject({ code: 'odisha-board', region: 'state' });
+    const draft = created.body.data.draftId as string;
+
+    const odia = await boss
+      .post(`/admin/syllabi/${draft}/subjects`, { level: '8', name: 'Odia' })
+      .expect(201);
+    expect(odia.body.data).toMatchObject({
+      subjectId: 'odia',
+      position: 0,
+      level: '8',
+      revision: 1,
+    });
     await boss
-      .post('/admin/syllabus/boards/odisha-board/classes/8/subjects', { name: 'odia' })
-      .expect(409);
+      .put(`/admin/syllabus-subjects/${odia.body.data.id}`, {
+        revision: 1,
+        units: [
+          {
+            name: '',
+            chapters: [{ name: 'Bande Utkala Janani' }, { name: 'Utkala Gaurab', difficulty: 3 }],
+          },
+        ],
+      })
+      .expect(200);
+    await boss.post(`/admin/syllabi/${draft}/subjects`, { level: '8', name: 'odia' }).expect(409);
     await boss
-      .post('/admin/syllabus/boards/odisha-board/classes/8/subjects', {
+      .post(`/admin/syllabi/${draft}/subjects`, {
+        level: '8',
         subjectId: 'custom1',
         name: 'Sneaky',
       })
       .expect(409);
+    await boss.post(`/admin/syllabi/${draft}/subjects`, { level: '13', name: 'Nope' }).expect(422);
 
-    // Copy CBSE class 9 maths & co. in, then rename one and reorder.
+    // Copy CBSE class 9 in, then rename one and reorder.
+    const cbse = (await boss.get('/admin/exams/cbse/syllabi').expect(200)).body.data[0]
+      .id as string;
     const copied = await boss
-      .post('/admin/syllabus/boards/odisha-board/classes/8/copy', { fromBoard: 'cbse', fromCls: 9 })
+      .post(`/admin/syllabi/${draft}/levels/8/copy`, { fromSyllabusId: cbse, fromLevel: '9' })
       .expect(200);
     expect(copied.body.data.added).toBe(5);
     const maths = copied.body.data.subjects.find(
       (s: { subjectId: string }) => s.subjectId === 'maths',
     );
-    await boss.patch(`/admin/syllabus/subjects/${maths.id}`, { name: 'Mathematics' }).expect(200);
+    await boss
+      .put(`/admin/syllabus-subjects/${maths.id}`, {
+        revision: maths.revision,
+        name: 'Mathematics',
+        units: maths.units,
+      })
+      .expect(200);
     const reordered = await boss
-      .put('/admin/syllabus/boards/odisha-board/classes/8/order', { subjectIds: ['maths', 'odia'] })
+      .put(`/admin/syllabi/${draft}/subjects/order`, { level: '8', subjectIds: ['maths', 'odia'] })
       .expect(200);
     expect(reordered.body.data.slice(0, 2).map((s: { name: string }) => s.name)).toEqual([
       'Mathematics',
       'Odia',
     ]);
 
-    const overview = await boss.get('/admin/syllabus/boards').expect(200);
-    const odisha = overview.body.data.find((b: { code: string }) => b.code === 'odisha-board');
-    expect(odisha.classes).toContainEqual({ cls: 8, subjects: 6 });
+    // Students don't see the board until it is published.
+    const draftBoards = await student.get('/syllabus/boards').expect(200);
+    expect(draftBoards.body.data.map((b: { code: string }) => b.code)).not.toContain(
+      'odisha-board',
+    );
+    await student.get('/syllabus/classes?board=odisha-board').expect(404);
 
-    const classes = await student.get('/syllabus/classes?board=odisha-board').expect(200);
-    expect(classes.body.data).toContainEqual({ cls: 8, available: true });
+    await boss.post(`/admin/syllabi/${draft}/publish`, {}).expect(200);
+    const boards = await student.get('/syllabus/boards').expect(200);
+    expect(boards.body.data).toContainEqual(
+      expect.objectContaining({ code: 'odisha-board', name: 'Odisha Board', kind: 'state' }),
+    );
+    const live = await student.get('/syllabus/classes?board=odisha-board').expect(200);
+    expect(live.body.data).toContainEqual({ cls: 8, available: true });
+    expect(live.body.data).toContainEqual({ cls: 9, available: false });
 
     // The app downloads this at setup and keeps the student's copy on the phone.
     const syllabus = await student.get('/syllabus/8?board=odisha-board').expect(200);
-    expect(
-      syllabus.body.data.slice(0, 2).map((subject: { id: string; name: string }) => subject.id),
-    ).toEqual(['maths', 'odia']);
-    expect(syllabus.body.data[1]).toMatchObject({
+    expect(syllabus.body.data.slice(0, 2).map((subject: { id: string }) => subject.id)).toEqual([
+      'maths',
+      'odia',
+    ]);
+    expect(syllabus.body.data[1]).toEqual({
       id: 'odia',
       name: 'Odia',
+      color: expect.any(String),
       chapters: [
-        { key: 'odia-1', name: 'Bande Utkala Janani' },
+        { key: 'odia-1', name: 'Bande Utkala Janani', difficulty: 2 },
         { key: 'odia-2', name: 'Utkala Gaurab', difficulty: 3 },
       ],
     });
 
-    await boss.delete('/admin/syllabus/boards/odisha-board').expect(204);
+    await boss.delete('/admin/exams/odisha-board').expect(204);
     await student.get('/syllabus/classes?board=odisha-board').expect(404);
   });
 });

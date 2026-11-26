@@ -3,6 +3,7 @@ import type { NextFunction, Request, RequestHandler, Response, Router } from 'ex
 import { ForbiddenError, UnauthorizedError, ValidationError } from '../errors/app-error.js';
 import { z } from '../zod.js';
 import { PageResult } from './page.js';
+import { can, type Permission } from './permissions.js';
 import { errorResponseSchema, successEnvelope } from './responses.js';
 import type { AuthContext, RequestMeta, Role } from './types.js';
 
@@ -47,6 +48,8 @@ export interface PublicRouteDefinition<B, Q, P> extends BaseDefinition<B, Q, P> 
 export interface AuthedRouteDefinition<B, Q, P> extends BaseDefinition<B, Q, P> {
   /** `user` admits any signed-in role; a role name admits only that role. */
   access: 'user' | Role;
+  /** When set, the signed-in role must also hold this permission (see permissions.ts). */
+  permission?: Permission;
   handler: (ctx: AuthedContext<B, Q, P>) => Promise<unknown>;
 }
 
@@ -97,10 +100,11 @@ function send(res: Response, status: SuccessStatus, result: unknown): void {
   res.status(status).json({ success: true, data: result ?? null });
 }
 
-function authorize(access: 'user' | Role, res: Response): AuthContext {
+function authorize(access: 'user' | Role, permission: Permission | undefined, res: Response) {
   const auth = res.locals.auth;
   if (!auth) throw new UnauthorizedError();
   if (access !== 'user' && auth.role !== access) throw new ForbiddenError();
+  if (permission && !can(auth.role, permission)) throw new ForbiddenError();
   return auth;
 }
 
@@ -109,7 +113,7 @@ function openApiPath(prefix: string, path: string): string {
 }
 
 function documentRoute<B, Q, P>(
-  definition: BaseDefinition<B, Q, P> & { access: string },
+  definition: BaseDefinition<B, Q, P> & { access: string; permission?: Permission },
   registry: OpenAPIRegistry,
   prefix: string,
 ): void {
@@ -134,8 +138,13 @@ function documentRoute<B, Q, P>(
   };
   if (definition.access !== 'public') {
     responses[401] = { description: 'Missing or invalid access token', content: errorContent };
-    if (definition.access !== 'user')
-      responses[403] = { description: 'Role not allowed', content: errorContent };
+    if (definition.access !== 'user' || definition.permission)
+      responses[403] = {
+        description: definition.permission
+          ? `Needs the ${definition.permission} permission`
+          : 'Role not allowed',
+        content: errorContent,
+      };
   }
   if (definition.path.includes(':'))
     responses[404] = { description: 'Not found', content: errorContent };
@@ -150,7 +159,12 @@ function documentRoute<B, Q, P>(
     method: definition.method,
     path: openApiPath(prefix, definition.path),
     summary: definition.summary,
-    description: definition.description,
+    description:
+      definition.permission && definition.access !== 'public'
+        ? [definition.description, `Requires the \`${definition.permission}\` permission.`]
+            .filter(Boolean)
+            .join('\n\n')
+        : definition.description,
     tags: definition.tags,
     security: definition.access === 'public' ? [] : [{ bearerAuth: [] }],
     request,
@@ -179,7 +193,10 @@ export function defineRoute<B = unknown, Q = unknown, P = unknown>(
     const result =
       definition.access === 'public'
         ? await definition.handler(parts)
-        : await definition.handler({ ...parts, auth: authorize(definition.access, res) });
+        : await definition.handler({
+            ...parts,
+            auth: authorize(definition.access, definition.permission, res),
+          });
     send(res, status, result);
   });
 

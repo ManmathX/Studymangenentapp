@@ -23,10 +23,17 @@ import { PasswordResetService } from './modules/auth/password-reset.service.js';
 import { MongoRefreshTokenRepository } from './modules/auth/refresh-token.repository.js';
 import { TokenService } from './modules/auth/token.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
-import { catalogAdminRoutes } from './modules/syllabus/catalog-admin.routes.js';
-import { MongoCatalogRepository } from './modules/syllabus/catalog.repository.js';
+import { CatalogCache } from './modules/syllabus/catalog-cache.js';
+import { CatalogSetup } from './modules/syllabus/catalog-setup.js';
 import { CatalogService } from './modules/syllabus/catalog.service.js';
+import { DashboardService } from './modules/syllabus/dashboard.service.js';
+import { examAdminRoutes } from './modules/syllabus/exam-admin.routes.js';
+import { MongoExamRepository } from './modules/syllabus/exam.repository.js';
+import { ExamService } from './modules/syllabus/exam.service.js';
+import { syllabusAdminRoutes } from './modules/syllabus/syllabus-admin.routes.js';
+import { MongoSyllabusRepository } from './modules/syllabus/syllabus.repository.js';
 import { syllabusRoutes } from './modules/syllabus/syllabus.routes.js';
+import { SyllabusService } from './modules/syllabus/syllabus.service.js';
 import { MongoUserRepository } from './modules/users/user.repository.js';
 
 export interface ContainerOptions {
@@ -92,7 +99,34 @@ export function buildContainer(options: ContainerOptions): Container {
     },
     google,
   );
-  const catalog = new CatalogService(new MongoCatalogRepository());
+  // Exam catalogue: categories, exams and versioned syllabi (see modules/syllabus).
+  const examRepository = new MongoExamRepository();
+  const syllabusRepository = new MongoSyllabusRepository();
+  const catalogSetup = new CatalogSetup(examRepository, syllabusRepository, transactions, clock);
+  const catalogCache = new CatalogCache();
+  const catalog = new CatalogService(
+    examRepository,
+    syllabusRepository,
+    catalogSetup,
+    catalogCache,
+  );
+  const exams = new ExamService(
+    examRepository,
+    syllabusRepository,
+    catalogSetup,
+    catalogCache,
+    transactions,
+    clock,
+  );
+  const syllabi = new SyllabusService(
+    examRepository,
+    syllabusRepository,
+    catalogSetup,
+    catalogCache,
+    transactions,
+    clock,
+  );
+  const dashboard = new DashboardService(examRepository, syllabusRepository, catalogSetup);
   const accounts = new AccountService(users, refreshTokens, passwords, transactions, audit);
   const mailer =
     options.mailer !== undefined
@@ -127,7 +161,8 @@ export function buildContainer(options: ContainerOptions): Container {
     ...authRoutes(auth, accounts, resets, rateLimiters.auth),
     ...syllabusRoutes(catalog),
     ...adminRoutes(users, auditLogs, audit),
-    ...catalogAdminRoutes(catalog, audit),
+    ...examAdminRoutes(exams, syllabi, dashboard, audit),
+    ...syllabusAdminRoutes(syllabi, audit),
   ];
 
   return { routes, rateLimiters, authenticate: createAuthenticate(tokens) };

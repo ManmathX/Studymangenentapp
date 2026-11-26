@@ -25,7 +25,8 @@ export const resources = {
   allChapters: { key: 'chapters:all', load: () => chaptersApi.list() },
   chapters: (subject) => ({ key: `chapters:${subject}`, load: () => chaptersApi.list(subject) }),
   proposal: (chapterKey) => ({ key: `proposal:${chapterKey}`, load: () => chaptersApi.proposal(chapterKey) }),
-  syllabusBoards: { key: 'syllabusBoards', load: syllabusApi.boards },
-  syllabusClasses: (board) => ({ key: `syllabusClasses:${board}`, load: () => syllabusApi.classes(board) }),
-  syllabus: (board, cls) => ({ key: `syllabus:${board}:${cls}`, load: () => syllabusApi.forClass(board, cls) }),
+  examCategories: { key: 'examCategories', load: syllabusApi.categories },
+  examCatalog: { key: 'examCatalog', load: syllabusApi.exams },
+  /** `{ exam, level, labels, version, subjects }` for one exam (and level). */
+  examSyllabus: (code, level) => ({ key: `examSyllabus:${code}:${level ?? ''}`, load: () => syllabusApi.examSubjects(code, level) }),
 };

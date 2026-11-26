@@ -1,4 +1,4 @@
-import { chosenSubjects, MAX_CUSTOM_SUBJECTS, useOnboardingStore } from '../onboardingStore';
+import { chosenSubjects, examChosen, MAX_CUSTOM_SUBJECTS, useOnboardingStore } from '../onboardingStore';
 
 const store = () => useOnboardingStore.getState();
 const draft = () => store().draft;
@@ -52,12 +52,20 @@ describe('subjects added during setup', () => {
     expect(draft().customSubjects).toHaveLength(MAX_CUSTOM_SUBJECTS);
   });
 
-  it('starts subjects over when the board or class changes, but keeps added subjects', () => {
-    store().setClass(9);
+  it('starts subjects over when the exam or level changes, but keeps added subjects', () => {
+    const cbse = { code: 'cbse', name: 'CBSE', shortName: 'CBSE', category: 'school-boards', levelLabel: 'Class', unitLabel: 'Unit', levels: [{ key: '9', name: 'Class 9', grade: 9 }] };
+    const jee = { code: 'jee-main', name: 'JEE Main', shortName: 'JEE Main', category: 'engineering', levelLabel: 'Level', unitLabel: 'Unit', levels: [] };
+    store().setExam(cbse);
+    expect(examChosen(draft())).toBe(false);
+    store().setLevel(cbse.levels[0]);
+    expect(draft()).toMatchObject({ board: 'cbse', cls: 9, level: { key: '9', name: 'Class 9', grade: 9 } });
+    expect(examChosen(draft())).toBe(true);
     store().saveCustomSubject({ name: 'Sanskrit', chapters: ['Sandhi'] });
     store().toggleSubject('maths');
-    store().setBoard('icse', 'ICSE');
-    expect(draft()).toMatchObject({ board: 'icse', boardName: 'ICSE', cls: null, turnedOff: [] });
+    store().setExam(jee);
+    expect(draft()).toMatchObject({ board: 'jee-main', boardName: 'JEE Main', cls: null, level: null, turnedOff: [], exam: { hasLevels: false } });
+    // One syllabus for everyone: nothing more to pick.
+    expect(examChosen(draft())).toBe(true);
     expect(draft().customSubjects).toHaveLength(1);
   });
 });

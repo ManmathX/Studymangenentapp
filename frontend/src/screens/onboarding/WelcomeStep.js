@@ -11,7 +11,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { checkName, MAX_NAME_LENGTH } from '../../utils/validation';
 import { FieldHeading, StepLayout } from './StepLayout';
 
-const SETUP_STEPS = ['Your board and class', 'Your subjects', 'Chapters already taught', 'Upcoming tests', 'Your school day'];
+const SETUP_STEPS = ['Your board or exam', 'Your subjects', 'Chapters already taught', 'Upcoming tests', 'Your school day'];
 
 export function WelcomeStep({ navigation }) {
   const { colors } = useTheme();
@@ -45,7 +45,7 @@ export function WelcomeStep({ navigation }) {
             variant="primary"
             block
             onPress={() => {
-              if (confirmName()) navigation.navigate('ClassStep');
+              if (confirmName()) navigation.navigate('ExamStep');
             }}
             testID="onboarding-start"
           />

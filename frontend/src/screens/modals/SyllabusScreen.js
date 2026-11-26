@@ -1,11 +1,12 @@
 import { memo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusDot } from '../../components/domain/Badges';
+import { ChapterMeta, ChapterSeparator } from '../../components/domain/SyllabusBits';
 import { Button } from '../../components/ui/Button';
 import { Chip, ChipGroup } from '../../components/ui/Controls';
 import { Input } from '../../components/ui/Field';
 import { Icon } from '../../components/ui/Icon';
-import { Card, Divider, Muted, Screen, Stack } from '../../components/ui/Layout';
+import { Card, Muted, Screen, Stack } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
@@ -14,6 +15,7 @@ import { resources } from '../../services/resources';
 import { useSubjectInfo } from '../../store/subjectStore';
 import { chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
+import { examLabel } from '../../utils/exam';
 
 export function SyllabusScreen({ navigation }) {
   const profile = useResource(resources.profile);
@@ -40,7 +42,7 @@ function SyllabusBody({ profile, navigation }) {
           <Card flush>
             {list.map((chapter, index) => (
               <View key={chapter.key}>
-                {index ? <Divider /> : null}
+                <ChapterSeparator chapter={chapter} previous={list[index - 1]} index={index} />
                 <ChapterRow chapter={chapter} onPress={() => navigation.navigate('ScheduleChapter', { chapterKey: chapter.key })} />
               </View>
             ))}
@@ -48,7 +50,7 @@ function SyllabusBody({ profile, navigation }) {
         )}
       </AsyncBoundary>
       <Muted small>
-        Class {profile.cls} {profile.boardName ?? profile.board}. 1. Pick a subject above. 2. Tap a chapter to plan when you’ll study it.
+        {examLabel(profile)}. 1. Pick a subject above. 2. Tap a chapter to plan when you’ll study it.
       </Muted>
       <AddSubject onAdded={setSubject} />
     </Stack>
@@ -99,7 +101,10 @@ const ChapterRow = memo(function ChapterRow({ chapter, onPress }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.fill : 'transparent' }]} testID={`chapter-${chapter.key}`}>
       <StatusDot status={chapter.status} />
-      <Text style={[styles.name, { color: colors.text }]}>{chapter.name}</Text>
+      <View style={styles.flex}>
+        <Text style={[styles.name, { color: colors.text }]}>{chapter.name}</Text>
+        <ChapterMeta chapter={chapter} />
+      </View>
       {chapter.plannedCount ? (
         <Text style={{ color: colors.tint, fontSize: 12, fontWeight: '600' }}>{chapter.plannedCount} planned</Text>
       ) : (
@@ -112,7 +117,8 @@ const ChapterRow = memo(function ChapterRow({ chapter, onPress }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 14, minHeight: 46 },
-  name: { flex: 1, fontSize: 15, fontWeight: '600' },
+  flex: { flex: 1 },
+  name: { fontSize: 15, fontWeight: '600' },
   form: { gap: 10 },
   chapters: { minHeight: 120 },
   buttons: { flexDirection: 'row', gap: 8 },

@@ -333,9 +333,11 @@ export function sharingDashboard() {
   const nextExam = upcomingExams(data, today)[0];
   return {
     name: profile.name,
-    cls: profile.cls,
+    cls: profile.cls ?? null,
     board: profile.board,
     boardName: profile.boardName ?? profile.board,
+    examShortName: profile.examShortName ?? null,
+    levelName: profile.levelName ?? null,
     ageMode: profile.ageMode,
     examSeason: profile.examSeason,
     homeworkMins: profile.homeworkMins ?? DEFAULT_HOMEWORK_MINS,

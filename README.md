@@ -1,10 +1,10 @@
 # Study Planner
 
-A study planner for school students on CBSE, ICSE and state boards. Students pick their board, class and subjects (adding any the syllabus lacks), mark what has been taught, copy in their school datesheet, add homework, and the planner lays out study blocks around school, tuition and meals, within a daily limit they choose.
+A study planner for school students on CBSE, ICSE and state boards, and for students preparing for competitive exams such as JEE, NEET, CUET and UPSC. Students pick their board or exam (and class or stage), their subjects (adding any the syllabus lacks), mark what has been taught, copy in their school datesheet, add homework, and the planner lays out study blocks around school, tuition and meals, within a daily limit they choose.
 
 - **`backend/`**: REST API for sign-in and the syllabus catalogue. Node.js 22, TypeScript, Express 5, MongoDB (replica set), optional Redis.
 - **`frontend/`**: mobile and web app. Expo SDK 58, React Native, React Navigation, Zustand. The planner runs on the device.
-- **`adminwebsite/`**: admin portal for boards, classes, subjects and chapters. Vite, React 19, React Router.
+- **`adminwebsite/`**: admin portal for exam categories, boards and competitive exams, their versioned syllabi (subjects, units, chapters, topics), a dashboard, and team roles. Vite, React 19, React Router, dnd-kit.
 
 **Where data lives.** The server's database holds only logins (name, email, password hash, Google id, role), sign-in sessions, a security audit log, and the shared syllabus catalogue that admins edit. Everything a student enters (profile, subjects, chapters, tests, homework, tasks, focus sessions, streaks, check-ins and settings) is saved only on their phone, in one file per account in the app's documents folder (`frontend/src/data/`). Two students who share a phone each get their own file. At setup the app downloads the board's syllabus once and keeps the student's copy on the phone.
 
@@ -28,7 +28,7 @@ Navigation lives in `frontend/src/navigation/` (`MainTabs.js` for the tabs, `Sec
 | Area | What a student can do |
 | --- | --- |
 | Account | Sign in (and sign up) with Google only, on Android, iOS and web; stay signed in (rotating refresh tokens), open the plan offline, sign out (the plan stays on the phone), delete the account (the login on the server and the plan on the phone). Email and password sign-in is only for admins, in the admin portal |
-| Setup | Write your name (filled in from Google, changeable later in Profile), pick board and class, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours, add each tuition with its own days and times (all changeable later in Profile), or load a demo student |
+| Setup | Write your name (filled in from Google, changeable later in Profile), pick a board or competitive exam from the published list (search or browse by category), then its class or stage if it has them, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours, add each tuition with its own days and times (all changeable later in Profile), or load a demo student |
 | Datesheet | Add unit tests, periodic tests, the half-yearly or final, or any other exam as one group of papers, each with its own date and syllabus. Unit tests get two weeks of preparation per paper; half-yearly and final exams get one mixed timetable across subjects starting weeks earlier. Edit or remove a paper or a whole exam, see readiness, add marks after a test |
 | Plan | 14-day strip, a day laid out around school, tuition and dinner, heavy-day warnings with a suggested move, move tasks |
 | Syllabus | Schedule a chapter's study steps on chosen days, update chapter status, add a subject after setup (name and chapters) |
@@ -37,7 +37,7 @@ Navigation lives in `frontend/src/navigation/` (`MainTabs.js` for the tabs, `Sec
 | Progress | Syllabus coverage, study hours against the weekly goal, test readiness, test results with marks, weekly review of slipped tasks |
 | Profile | School hours; add, edit or remove tuitions (up to 6, each with a name, days and times); daily Homework and study slots (homework length 30 to 90 min); dark mode; a weekly parent summary sent from the phone (WhatsApp, SMS, email); share the streak with friends; save a backup file and restore it (to move to a new phone); start over |
 
-Admins use the **admin portal** to add boards (state boards included), and to add, rename, reorder, copy and delete each class's subjects and edit their chapters and difficulty. Students get a board's class once it has a subject with chapters. Students who already set up keep their own copy on their phone, so catalogue edits only affect new students. A fresh database starts with the standard CBSE and ICSE syllabus for classes 6 to 12, with book names.
+Admins use the **admin portal** to manage exam categories and exams (school boards and competitive exams, each with its own structure, languages, logo and settings), and to edit each exam's syllabus as drafts: subjects, units, chapters, topics and subtopics, with drag-and-drop ordering, importance, weightage, marks, CSV/JSON import and export, and copying between exams and years. Publishing a draft makes it what new students get. Students who already set up keep their own copy on their phone, so catalogue changes only affect new students. A fresh database starts with the standard CBSE and ICSE syllabus for classes 6 to 12, and NIOS, 27 state boards, JEE, NEET, CUET, UPSC, NDA and two olympiads set up with empty drafts. See [docs/exam-catalogue.md](docs/exam-catalogue.md).
 
 ## Run it locally
 
@@ -63,7 +63,7 @@ npm run web                   # or: npm run ios / npm run android
 
 On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address. See `frontend/.env.example`.
 
-To create an admin account, run `ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run create-admin` in `backend/`.
+To create an admin account, run `ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run create-admin` in `backend/` (add `ADMIN_ROLE=editor` for a content editor who can't publish or delete).
 
 ```bash
 # 4. Admin portal on http://localhost:5173 (sign in with the admin account)
@@ -119,7 +119,8 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-strong-pass-1' docker compose run 
 
 Production checklist:
 
-- **Database.** Use a managed MongoDB replica set (for example Atlas) with backups. Indexes are created at start-up. It holds logins, sessions, pending password-reset codes, the audit log and the syllabus catalogue only.
+- **Database.** Use a managed MongoDB replica set (for example Atlas) with backups. Indexes are created at start-up. It holds logins, sessions, pending password-reset codes, the audit log and the exam catalogue only.
+- **Upgrading from the board-only catalogue.** The first catalogue request copies existing boards and their subjects into exams with a published syllabus each, once, in a transaction; old collections are left in place and earlier app builds get the same responses. Take a backup first. Details in [docs/exam-catalogue.md](docs/exam-catalogue.md#upgrading-an-existing-database).
 - **Upgrading a database from before plans moved to phones.** Older versions stored students' plans on the server. That data is no longer read, and the app does not copy it to phones. `npm run drop-planner-data` lists what is left; `npm run drop-planner-data -- --yes` deletes it. Take a database backup first if any of it might still be wanted.
 - **HTTPS.** Run the API behind a load balancer or reverse proxy that terminates TLS. Set `TRUST_PROXY` to the number of proxy hops so rate limits and audit logs see real client IPs.
 - **Forgot-password email.** Set `SMTP_URL` (any SMTP provider, e.g. `smtps://user:pass@smtp.example.com:465`) and `MAIL_FROM`. Without them the app's "Forgot password?" answers that reset isn't set up. Codes have 6 digits, last `PASSWORD_RESET_CODE_TTL_MINUTES` (15), stop after 5 wrong tries, and are stored only as an HMAC.
@@ -148,6 +149,7 @@ Run `npm run build` in `adminwebsite/` with `VITE_API_URL` set to the HTTPS API 
 - Passwords are hashed with argon2id at OWASP settings. Sign-in failures take the same time whether or not the email exists.
 - Access tokens are short-lived (15 min) HS256 JWTs. Refresh tokens rotate on every use and are stored only as hashes. Replaying an old refresh token revokes that whole login.
 - On the device, refresh tokens live in the iOS Keychain or Android Keystore. Access tokens are kept in memory only.
+- Admin portal access is by role: editors manage exams and draft syllabi; only admins publish, delete and change roles (see `backend/src/common/http/permissions.ts`).
 - Every request body, query and parameter is validated with strict Zod schemas, so unknown fields and NoSQL operators are rejected. Every query is scoped to the signed-in student.
 - Rate limits apply to sign-in, registration, refresh, password change and reset, and account deletion. Asking for a reset code answers the same whether or not the email has an account. Security events go to an audit log that is kept for 180 days.
 - Helmet sets the security headers. Request bodies are capped at 100 kB.
@@ -159,6 +161,7 @@ Run `npm run build` in `adminwebsite/` with `VITE_API_URL` set to the HTTPS API 
 - The parent summary and streak are sent by the student from the phone's share sheet. Nothing is sent automatically, and there are no study groups, because those would need student data on the server.
 - Forgot password needs an email server (`SMTP_URL`); without one, students can still change their password while signed in.
 - After a password change, an account deletion or an admin role change, an access token that was already issued keeps working until it expires, at most 15 minutes.
-- CBSE and ICSE ship with a standard syllabus for classes 6 to 12. Admins load state boards and edit any class from the admin portal.
+- CBSE and ICSE ship with a standard syllabus for classes 6 to 12. State boards, NIOS and competitive exams ship as setup only; admins fill in and publish their syllabi (by hand or by importing a sheet) before students can pick them.
+- Students see topics, units and importance, but the planner schedules and tracks whole chapters.
 - After setup, students can add their own subjects, but turning a board subject back on (or off) means starting over.
 - Editing a paper keeps the study blocks already planned; schedule more from the syllabus if the date or chapters changed.

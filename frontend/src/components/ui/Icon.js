@@ -183,6 +183,12 @@ const shapes = {
   star: (
     <Path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" />
   ),
+  search: (
+    <>
+      <Circle cx="11" cy="11" r="6.5" />
+      <Path d="M16 16l4.5 4.5" />
+    </>
+  ),
 };
 
 const filled = new Set([

@@ -17,7 +17,8 @@ export type AuditAction =
   | 'auth.password_reset'
   | 'auth.password_reset_failed'
   | 'admin.role_changed'
-  | 'admin.syllabus_changed';
+  | 'admin.syllabus_changed'
+  | 'admin.exam_changed';
 
 export interface AuditSink {
   record(

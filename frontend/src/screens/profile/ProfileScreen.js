@@ -17,6 +17,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { HOMEWORK_SLOT_OPTIONS } from '../../data/core/engine';
 import { clockTime, duration, hours, initialOf, plural } from '../../utils/format';
+import { examLabel } from '../../utils/exam';
 import { schoolDayProblem, tuitionsFromForm, tuitionsToForm } from '../../utils/tuitions';
 import { checkName, MAX_NAME_LENGTH } from '../../utils/validation';
 
@@ -62,9 +63,7 @@ function ProfileCard({ data }) {
           <Button title="Edit name" icon="pencil" size="sm" variant="ghost" onPress={() => setEditing(true)} testID="edit-name" />
         </>
       )}
-      <Muted>
-        Class {data.cls}, {data.boardName ?? data.board}
-      </Muted>
+      <Muted>{examLabel(data)}</Muted>
       {data.preview ? (
         <View style={[styles.stats, { borderTopColor: colors.separator }]}>
           <Stat value={String(data.preview.streak)} label="day streak" />

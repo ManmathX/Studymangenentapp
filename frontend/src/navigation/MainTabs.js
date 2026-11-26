@@ -1,6 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useEffect, useState } from 'react';
-import { Animated, StyleSheet } from 'react-native';
+import { useEffect, useId, useState } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/ui/Icon';
 import { nativeDriver, useReducedMotion } from '../components/ui/Motion';
@@ -15,31 +16,53 @@ import { useTheme } from '../theme/ThemeProvider';
 import { HeaderAvatar } from './HeaderAvatar';
 import { SectionPage } from './SectionPage';
 
-const Tab = createBottomTabNavigator();
+const FONT_SIZE = 24;
+const FONT_WEIGHT = 'bold';
 
-/** Three-page app. Today = do it; Plan = schedule it; Progress = look back and keep habits. */
+function GradientTitle({ title }) {
+  const { colors } = useTheme();
+  const rawId = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const id = `hg${rawId}`;
+  const approxWidth = title.length * FONT_SIZE * 0.62;
+  return (
+    <View style={{ height: FONT_SIZE + 8, width: approxWidth }}>
+      <Svg width={approxWidth} height={FONT_SIZE + 8}>
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+            {colors.hero.map((color, i) => (
+              <Stop key={color} offset={i / (colors.hero.length - 1)} stopColor={color} />
+            ))}
+          </LinearGradient>
+        </Defs>
+        <SvgText
+          fill={`url(#${id})`}
+          fontSize={FONT_SIZE}
+          fontWeight={FONT_WEIGHT}
+          x={0}
+          y={FONT_SIZE}
+        >
+          {title}
+        </SvgText>
+      </Svg>
+    </View>
+  );
+}
+
+const Tab = createBottomTabNavigator();
 const PLAN_SECTIONS = [
   { value: 'plan', label: 'Plan', component: PlanScreen },
   { value: 'homework', label: 'Homework', component: HomeworkScreen },
-];
-
-const PROGRESS_SECTIONS = [
-  { value: 'progress', label: 'Progress', component: ProgressScreen },
-  { value: 'habits', label: 'Focus & habits', component: HabitsScreen },
 ];
 
 function PlanPage(props) {
   return <SectionPage sections={PLAN_SECTIONS} label="Plan sections" {...props} />;
 }
 
-function ProgressPage(props) {
-  return <SectionPage sections={PROGRESS_SECTIONS} label="Progress sections" {...props} />;
-}
-
 const TABS = [
   { name: 'Today', component: TodayScreen, icon: 'today', title: 'Today' },
   { name: 'Plan', component: PlanPage, icon: 'plan', title: 'My Plan' },
-  { name: 'Progress', component: ProgressPage, icon: 'progress', title: 'My Progress' },
+  { name: 'Progress', component: ProgressScreen, icon: 'progress', title: 'My Progress' },
+  { name: 'Habits', component: HabitsScreen, icon: 'habits', title: 'Focus & Habits' },
 ];
 
 /** Tab icon that sits in a soft pill and hops up a little when its tab is chosen. */
@@ -95,6 +118,7 @@ export function MainTabs() {
           component={tab.component}
           options={{
             title: tab.title,
+            headerTitle: () => <GradientTitle title={tab.title} />,
             tabBarLabel: tab.name,
             tabBarIcon: ({ color, focused }) => <TabIcon name={tab.icon} color={color} focused={focused} />,
             tabBarButtonTestID: `tab-${tab.name}`,

@@ -55,8 +55,13 @@ async function main(): Promise<void> {
     JSON.stringify(Object.keys(me.json.data as object)) === '["user"]',
   );
 
-  // The app downloads the board's syllabus at setup; everything else stays on the phone.
+  // The app downloads the exam's syllabus at setup; everything else stays on the phone.
+  // `/syllabus/boards`, `/classes` and `/:cls` serve app builds from before exams.
   for (const path of [
+    '/syllabus/categories',
+    '/syllabus/exams',
+    '/syllabus/exams/cbse',
+    '/syllabus/exams/cbse/subjects?level=9',
     '/syllabus/boards',
     '/syllabus/classes?board=cbse',
     '/syllabus/9?board=cbse',

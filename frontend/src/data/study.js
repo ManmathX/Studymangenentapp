@@ -448,6 +448,13 @@ const chapterDto = (chapter) => ({
   learnedOn: chapter.learnedOn,
   revisions: chapter.revisions,
   snoozedUntil: chapter.snoozedUntil,
+  // From the exam syllabus at setup (absent for older plans and added subjects).
+  unit: chapter.unit ?? null,
+  important: chapter.important === true,
+  weightage: chapter.weightage ?? null,
+  marks: chapter.marks ?? null,
+  grade: chapter.grade ?? null,
+  topics: chapter.topics ? copy(chapter.topics) : [],
 });
 
 /** Chapters with how many open steps are planned from today on. */

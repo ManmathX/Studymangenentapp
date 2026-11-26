@@ -1,5 +1,7 @@
+import { permissionsOf, type Permission } from '../../common/http/permissions.js';
 import type { Role } from '../../common/http/types.js';
 import { skipFor, type PaginationQuery } from '../../common/http/page.js';
+import { escapeRegex } from '../../common/utils/text.js';
 import { idOf, toObjectId } from '../../database/ids.js';
 import type { TxHandle } from '../../database/transaction.js';
 import { UserModel, type UserDocument } from './user.model.js';
@@ -9,6 +11,8 @@ export interface UserRecord {
   email: string;
   name: string;
   role: Role;
+  /** Derived from the role; see common/http/permissions.ts. */
+  permissions: Permission[];
   /** False when the account only signs in with Google. */
   hasPassword: boolean;
   createdAt: string;
@@ -25,6 +29,8 @@ export interface NewUser {
 
 export interface UserListQuery extends PaginationQuery {
   role?: Role;
+  /** Matches the start of a word in the name or email, ignoring case. */
+  q?: string;
   sort: 'createdAt' | '-createdAt' | 'email' | '-email';
 }
 
@@ -55,6 +61,7 @@ function toRecord(doc: UserLean): UserRecord {
     email: doc.email,
     name: doc.name,
     role: doc.role,
+    permissions: permissionsOf(doc.role),
     hasPassword: doc.hasPassword !== false,
     createdAt: doc.createdAt.toISOString(),
     lastLoginAt: doc.lastLoginAt ? doc.lastLoginAt.toISOString() : null,
@@ -136,7 +143,11 @@ export class MongoUserRepository implements UserRepository {
   }
 
   async list(query: UserListQuery): Promise<{ items: UserRecord[]; total: number }> {
-    const filter = query.role ? { role: query.role } : {};
+    const filter: Record<string, unknown> = query.role ? { role: query.role } : {};
+    if (query.q) {
+      const pattern = new RegExp(`(^|[\\s@._-])${escapeRegex(query.q)}`, 'i');
+      filter.$or = [{ name: pattern }, { email: pattern }];
+    }
     const field = query.sort.replace('-', '');
     const direction = query.sort.startsWith('-') ? -1 : 1;
     const [docs, total] = await Promise.all([

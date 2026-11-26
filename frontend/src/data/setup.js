@@ -101,9 +101,13 @@ const CUSTOM_CHAPTER_DIFFICULTY = 2;
 function profileDto(profile, today) {
   return copy({
     name: profile.name,
-    cls: profile.cls,
+    cls: profile.cls ?? null,
     board: profile.board,
     boardName: profile.boardName ?? profile.board,
+    examShortName: profile.examShortName ?? null,
+    level: profile.level ?? null,
+    levelName: profile.levelName ?? null,
+    syllabusYear: profile.syllabusYear ?? null,
     timezone: profile.timezone,
     subjects: profile.subjects,
     subjectInfo: subjectInfoOf(profile),
@@ -163,8 +167,45 @@ export function updateProfile(patch) {
 
 /* ---------- First-time setup ---------- */
 
+const PRIORITIES = ['high', 'medium', 'low'];
+const amount = (value, max) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined);
+const shortText = (value, max) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined);
+
+/** Keeps only what is set, so the saved planner stays small. */
+const compact = (object) => Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined && value !== false));
+
 /**
- * The class's subjects as downloaded from the server's syllabus catalogue. Chapter keys are
+ * A chapter's details beyond name and difficulty, as the exam syllabus sends them: its unit,
+ * whether it is important, weightage and marks, and its topics. Shown to the student; the
+ * planner itself works on chapters. Anything that doesn't look right is dropped, not fatal.
+ */
+function chapterDetails(chapter) {
+  const topics = Array.isArray(chapter?.topics)
+    ? chapter.topics.slice(0, 80).flatMap((topic) => {
+        const name = shortText(topic?.name, 160);
+        if (!name) return [];
+        const subtopics = Array.isArray(topic.subtopics)
+          ? topic.subtopics.slice(0, 50).flatMap((sub) => {
+              const subName = shortText(sub?.name, 160);
+              return subName ? [compact({ name: subName, important: sub.important === true })] : [];
+            })
+          : [];
+        return [compact({ name, important: topic.important === true, weightage: amount(topic.weightage, 100), marks: amount(topic.marks, 1000), priority: PRIORITIES.includes(topic.priority) ? topic.priority : undefined, subtopics: subtopics.length ? subtopics : undefined })];
+      })
+    : [];
+  return compact({
+    unit: shortText(chapter?.unit, 120),
+    important: chapter?.important === true,
+    weightage: amount(chapter?.weightage, 100),
+    marks: amount(chapter?.marks, 1000),
+    priority: PRIORITIES.includes(chapter?.priority) ? chapter.priority : undefined,
+    grade: Number.isInteger(chapter?.grade) && chapter.grade >= 1 && chapter.grade <= 12 ? chapter.grade : undefined,
+    topics: topics.length ? topics : undefined,
+  });
+}
+
+/**
+ * The subjects as downloaded from the server's syllabus catalogue. Chapter keys are
  * `<subject>-<n>` (1-based), the same rule the server uses, so ticked chapters line up.
  */
 function cleanCatalog(catalog) {
@@ -181,6 +222,7 @@ function cleanCatalog(catalog) {
         key: `${subject.id}-${index + 1}`,
         name: text(chapter?.name, 'catalog', { max: 120 }),
         difficulty: [1, 2, 3].includes(chapter?.difficulty) ? chapter.difficulty : 2,
+        ...chapterDetails(chapter),
       })),
     };
   });
@@ -255,16 +297,26 @@ function validExam(exam, index, { subjects, known, today }) {
 
 /**
  * Creates the profile, chapters, tests and their study slots in one step.
- * `catalog` is the class's syllabus from the server (`GET /syllabus/:cls`); from here on the
- * student's copy lives only on this device, so later catalogue edits don't change their plan.
+ * `board` is the exam or board code and `catalog` its syllabus from the server
+ * (`GET /syllabus/exams/:code/subjects`, or `GET /syllabus/:cls` in earlier versions). `cls` is
+ * the school class, or null for exams without classes (JEE, NEET). From here on the student's
+ * copy lives only on this device, so later catalogue edits don't change their plan.
  */
 export function onboard(body) {
   const result = write((draft) => {
     if (draft.profile) throw conflict('Your planner is already set up', 'ALREADY_ONBOARDED');
     const name = text(body.name, 'name', { max: 60, required: 'Enter your name' });
     if (typeof body.board !== 'string' || !BOARD_CODE.test(body.board)) throw invalidField('board', 'Pick a board');
-    const boardName = text(body.boardName ?? body.board, 'boardName', { max: 60 });
-    const cls = intIn(body.cls, 6, 12, 'cls');
+    const boardName = text(body.boardName ?? body.board, 'boardName', { max: 80 });
+    const cls = body.cls === null || body.cls === undefined ? null : intIn(body.cls, 1, 12, 'cls');
+    const exam = compact({
+      examShortName: shortText(body.examShortName, 16),
+      examCategory: shortText(body.examCategory, 32),
+      level: shortText(body.level, 24),
+      levelName: shortText(body.levelName, 40),
+      syllabusVersion: shortText(body.syllabusVersion, 24),
+      syllabusYear: shortText(body.syllabusYear, 7),
+    });
     const catalog = cleanCatalog(body.catalog);
     const chosenIds = list(body.subjects, 'subjects', { min: 1, max: catalog.length + MAX_CUSTOM_SUBJECTS, message: 'Keep at least one subject' });
     const customSubjects = list(body.customSubjects ?? [], 'customSubjects', { max: MAX_CUSTOM_SUBJECTS });
@@ -288,6 +340,7 @@ export function onboard(body) {
       cls,
       board: body.board,
       boardName,
+      ...exam,
       timezone: clock.timeZone(),
       subjects,
       subjectInfo,
@@ -295,7 +348,8 @@ export function onboard(body) {
       dailyLimitMins,
       homeworkMins,
       weeklyGoalMins: dailyLimitMins * 5,
-      ageMode: cls <= 8 ? 'simple' : 'deeper',
+      // Younger classes get the simpler planner; exams without a class are for older students.
+      ageMode: cls !== null && cls <= 8 ? 'simple' : 'deeper',
       examSeason: false,
       sharing: { parent: false, items: { hours: true, streak: true, coverage: true, tests: true, marks: false }, groups: false },
       trackingStart: today,

@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { StyleSheet, Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
+import { ChapterMeta } from '../../components/domain/SyllabusBits';
+import { Icon } from '../../components/ui/Icon';
 import { Button } from '../../components/ui/Button';
 import { CheckRow, SegmentedControl } from '../../components/ui/Controls';
 import { Card, Divider, Muted, Screen, Section, Stack } from '../../components/ui/Layout';
@@ -59,10 +61,14 @@ function ScheduleForm({ data, today, navigation }) {
       <Card>
         <Text style={{ color: subjectOf(chapter.subject).color, fontWeight: '700' }}>{subjectOf(chapter.subject).name}</Text>
         <Text style={[styles.title, { color: colors.text }]}>{chapter.name}</Text>
+        {chapter.unit ? <Muted small>{chapter.unit}</Muted> : null}
+        <ChapterMeta chapter={chapter} />
         <Muted small>
           {exam ? `In ${exam.name} on ${shortDate(exam.date)}. Steps are placed before then.` : 'No test includes this chapter yet, so steps are spread over the next two weeks.'}
         </Muted>
       </Card>
+
+      {chapter.topics.length ? <TopicsSection chapter={chapter} /> : null}
 
       <Section title="How well do you know it?" icon="target" bare>
         <SegmentedControl
@@ -121,7 +127,39 @@ function ScheduleForm({ data, today, navigation }) {
   );
 }
 
+/** The chapter's topics from the exam syllabus, important ones starred. Collapsed at first. */
+function TopicsSection({ chapter }) {
+  const { colors } = useTheme();
+  const important = chapter.topics.filter((topic) => topic.important).length;
+  return (
+    <Section
+      title="Topics"
+      icon="list"
+      flush
+      collapsible
+      summary={`${chapter.topics.length} topic${chapter.topics.length === 1 ? '' : 's'}${important ? `, ${important} important` : ''}`}
+      testID="chapter-topics"
+    >
+      {chapter.topics.map((topic, index) => (
+        <View key={`${topic.name}-${index}`}>
+          {index ? <Divider /> : null}
+          <View style={styles.topic}>
+            {topic.important ? <Icon name="star" size={14} color={colors.warning} /> : <View style={styles.topicDot} />}
+            <View style={styles.flex}>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: topic.important ? '700' : '500' }}>{topic.name}</Text>
+              {topic.subtopics?.length ? <Muted small>{topic.subtopics.map((sub) => sub.name).join(' · ')}</Muted> : null}
+            </View>
+            {topic.weightage ? <Muted small>{topic.weightage}%</Muted> : null}
+          </View>
+        </View>
+      ))}
+    </Section>
+  );
+}
+
 const styles = StyleSheet.create({
+  topic: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, paddingHorizontal: 14 },
+  topicDot: { width: 14 },
   title: { fontSize: 20, fontWeight: '800', marginVertical: 2 },
   planned: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 14 },
   flex: { flex: 1 },

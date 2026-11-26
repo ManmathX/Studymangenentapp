@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UnauthorizedError } from '../../common/errors/app-error.js';
 import type { AuthContext, Role } from '../../common/http/types.js';
 import type { AccessTokenVerifier } from '../../common/middleware/authenticate.js';
+import { ROLES } from '../../common/http/permissions.js';
 
 export interface TokenSettings {
   secret: string;
@@ -10,8 +11,6 @@ export interface TokenSettings {
   audience: string;
   accessTtlSeconds: number;
 }
-
-const ROLES: readonly Role[] = ['student', 'admin'];
 
 export class TokenService implements AccessTokenVerifier {
   constructor(private readonly settings: TokenSettings) {}
@@ -34,7 +33,11 @@ export class TokenService implements AccessTokenVerifier {
         issuer: this.settings.issuer,
         audience: this.settings.audience,
       });
-      if (typeof payload === 'string' || !payload.sub || !ROLES.includes(payload.role as Role)) {
+      if (
+        typeof payload === 'string' ||
+        !payload.sub ||
+        !(ROLES as readonly string[]).includes(payload.role as string)
+      ) {
         throw new UnauthorizedError('Your session is not valid', 'TOKEN_INVALID');
       }
       return { userId: payload.sub, role: payload.role as Role };

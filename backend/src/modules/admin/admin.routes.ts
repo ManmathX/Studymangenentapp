@@ -1,5 +1,6 @@
 import { ConflictError, NotFoundError } from '../../common/errors/app-error.js';
 import { PageResult, paginationQuerySchema } from '../../common/http/page.js';
+import { ROLES } from '../../common/http/permissions.js';
 import { defineRoute, type Route } from '../../common/http/route.js';
 import { z } from '../../common/zod.js';
 import { idParamsSchema, objectIdSchema } from '../../common/utils/validators.js';
@@ -30,11 +31,13 @@ export function adminRoutes(
     defineRoute({
       method: 'get',
       path: '/admin/users',
-      access: 'admin',
+      access: 'user',
+      permission: 'users:manage',
       summary: 'List accounts (admin only)',
       tags,
       query: paginationQuerySchema.extend({
-        role: z.enum(['student', 'admin']).optional(),
+        role: z.enum(ROLES).optional(),
+        q: z.string().trim().max(80).optional(),
         sort: z.enum(['createdAt', '-createdAt', 'email', '-email']).default('-createdAt'),
       }),
       response: userSchema,
@@ -47,11 +50,12 @@ export function adminRoutes(
     defineRoute({
       method: 'patch',
       path: '/admin/users/:id/role',
-      access: 'admin',
+      access: 'user',
+      permission: 'users:manage',
       summary: 'Change an account role (admin only, audited)',
       tags,
       params: idParamsSchema,
-      body: z.strictObject({ role: z.enum(['student', 'admin']) }),
+      body: z.strictObject({ role: z.enum(ROLES) }),
       response: userSchema,
       handler: async ({ params, body, auth, meta }) => {
         // Stops an admin from locking every admin out by demoting themselves.
@@ -70,7 +74,8 @@ export function adminRoutes(
     defineRoute({
       method: 'get',
       path: '/admin/audit-logs',
-      access: 'admin',
+      access: 'user',
+      permission: 'audit:read',
       summary: 'Security audit trail, newest first (admin only)',
       tags,
       query: paginationQuerySchema.extend({

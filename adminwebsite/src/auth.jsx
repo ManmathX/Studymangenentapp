@@ -8,6 +8,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => api.setSessionExpiredHandler(() => setUser(null)), [])
 
+  // A saved session may predate a role change; ask the server who we are.
+  useEffect(() => {
+    if (!api.currentSession()) return
+    api
+      .refreshUser()
+      .then(setUser)
+      .catch(() => {})
+  }, [])
+
   const login = useCallback(async (email, password) => setUser(await api.login(email, password)), [])
   const logout = useCallback(async () => {
     try {
@@ -17,7 +26,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const value = useMemo(() => ({ user, login, logout }), [user, login, logout])
+  const value = useMemo(() => ({ user, login, logout, can: (permission) => api.can(user, permission) }), [user, login, logout])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

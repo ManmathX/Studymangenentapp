@@ -36,15 +36,45 @@ const TOKENS = { accessToken: 'access', refreshToken: 'refresh', tokenType: 'Bea
 const ok = (data) => [200, { success: true, data }];
 const plannerFile = (user) => `file:///documents/planner-${user.id}.json`;
 
+const classes = [6, 7, 8, 9, 10, 11, 12].map((grade) => ({ key: String(grade), name: `Class ${grade}`, grade, available: grade === 9 }));
+const EXAMS = [
+  { code: 'cbse', name: 'CBSE', shortName: 'CBSE', category: 'school-boards', categoryName: 'School Boards', categoryGroup: 'board', description: 'NCERT textbooks', color: '#007AFF', logoUrl: null, region: 'national', state: '', levelLabel: 'Class', unitLabel: 'Unit', levels: classes, available: true, academicYear: '2026-27', languages: ['English'], position: 0 },
+  { code: 'jee-main', name: 'JEE Main', shortName: 'JEE Main', category: 'engineering', categoryName: 'Engineering Entrance', categoryGroup: 'exam', description: 'NITs and IIITs', color: '#FF9500', logoUrl: null, region: 'national', state: '', levelLabel: 'Level', unitLabel: 'Unit', levels: [], available: true, academicYear: '2026-27', languages: ['English'], position: 0 },
+  { code: 'neet-ug', name: 'NEET UG', shortName: 'NEET', category: 'medical', categoryName: 'Medical Entrance', categoryGroup: 'exam', description: 'Medical colleges', color: '#34C759', logoUrl: null, region: 'national', state: '', levelLabel: 'Level', unitLabel: 'Unit', levels: [], available: false, academicYear: null, languages: [], position: 0 },
+];
+const CATEGORIES = [
+  { code: 'school-boards', name: 'School Boards', group: 'board', exams: 1 },
+  { code: 'engineering', name: 'Engineering Entrance', group: 'exam', exams: 1 },
+  { code: 'medical', name: 'Medical Entrance', group: 'exam', exams: 1 },
+];
+const VERSION = { id: '665f1c2b9a1e4b00aaaaaaaa', academicYear: '2026-27', version: 1, publishedAt: '2026-11-01T00:00:00.000Z' };
+/** A competitive exam: no classes, chapters in units, with topics. */
+const JEE_SUBJECTS = [
+  {
+    id: 'physics',
+    name: 'Physics',
+    color: '#5856D6',
+    units: [{ name: 'Mechanics', chapters: 2 }],
+    chapters: [
+      { key: 'physics-1', name: 'Kinematics', difficulty: 2, unit: 'Mechanics', important: true, weightage: 8, grade: 11, topics: [{ name: 'Projectile motion', important: true, subtopics: [{ name: 'Range', important: false }] }] },
+      { key: 'physics-2', name: 'Laws of Motion', difficulty: 3, unit: 'Mechanics', important: false, topics: [] },
+    ],
+  },
+  { id: 'chemistry', name: 'Chemistry', color: '#30B0C7', units: [], chapters: [{ key: 'chemistry-1', name: 'Mole Concept', difficulty: 2, important: false, topics: [] }] },
+];
+
 /** The server only knows logins and the syllabus catalogue. */
 function serverFor(user) {
   server.onPost('/auth/google').reply(() => ok({ user, tokens: TOKENS }));
   server.onPost('/auth/logout').reply(204);
   server.onGet('/auth/me').reply(() => ok({ user }));
   server.onDelete('/auth/account').reply(204);
-  server.onGet('/syllabus/boards').reply(() => ok([{ code: 'cbse', name: 'CBSE', kind: 'national', position: 0 }]));
-  server.onGet('/syllabus/classes').reply(() => ok([6, 7, 8, 9, 10, 11, 12].map((cls) => ({ cls, available: cls === 9 }))));
-  server.onGet('/syllabus/9').reply(() => ok(CATALOG));
+  server.onGet('/syllabus/categories').reply(() => ok(CATEGORIES));
+  server.onGet('/syllabus/exams').reply(() => ok(EXAMS));
+  server.onGet('/syllabus/exams/cbse/subjects').reply((config) =>
+    config.params?.level === '9' ? ok({ exam: EXAMS[0], level: classes[3], labels: { level: 'Class', unit: 'Unit' }, version: VERSION, subjects: CATALOG }) : [404, { success: false, error: { code: 'CLASS_NOT_AVAILABLE', message: 'Not yet' } }],
+  );
+  server.onGet('/syllabus/exams/jee-main/subjects').reply(() => ok({ exam: EXAMS[1], level: null, labels: { level: 'Level', unit: 'Unit' }, version: VERSION, subjects: JEE_SUBJECTS }));
   refreshServer.onPost(/\/auth\/refresh$/).reply(() => ok(TOKENS));
 }
 
@@ -63,7 +93,7 @@ async function signIn() {
 
 async function setUp() {
   await press(await screen.findByTestId('onboarding-start').then(() => 'onboarding-start'));
-  for (const step of ['class-9', 'class-continue', 'subjects-continue', 'taught-continue', 'tests-continue', 'build-plan']) {
+  for (const step of ['exam-cbse', 'level-9', 'exam-continue', 'subjects-continue', 'taught-continue', 'tests-continue', 'build-plan']) {
     await screen.findByTestId(step);
     await press(step);
   }
@@ -108,9 +138,60 @@ describe('the app, with the plan kept on the phone', () => {
 
     expect(await screen.findByText('No tests added yet')).toBeTruthy();
     const saved = await savedPlanner(MEERA);
-    expect(saved.profile).toMatchObject({ name: 'Meera', cls: 9, board: 'cbse', boardName: 'CBSE' });
+    expect(saved.profile).toMatchObject({ name: 'Meera', cls: 9, board: 'cbse', boardName: 'CBSE', level: '9', levelName: 'Class 9', syllabusYear: '2026-27' });
     expect(saved.chapters.length).toBe(CATALOG.reduce((sum, subject) => sum + subject.chapters.length, 0));
-    expect(server.history.map((request) => request.url)).toEqual(expect.arrayContaining(['/auth/google', '/syllabus/9']));
+    expect(server.history.map((request) => request.url)).toEqual(expect.arrayContaining(['/auth/google', '/syllabus/exams', '/syllabus/exams/cbse/subjects']));
+  });
+
+  it('sets up for a competitive exam with no class, keeping units and topics on the phone', async () => {
+    serverFor(MEERA);
+    await render(<App />);
+    await signIn(MEERA);
+    await press(await screen.findByTestId('onboarding-start').then(() => 'onboarding-start'));
+
+    // Search; exams that aren't ready yet are not offered at all.
+    await fireEvent.changeText(await screen.findByTestId('exam-search'), 'olympiad');
+    expect(await screen.findByText(/No exam matches “olympiad”/)).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('exam-search'), '');
+    expect(screen.queryByTestId('exam-neet-ug')).toBeNull();
+    await press('category-engineering');
+    expect(screen.queryByTestId('exam-cbse')).toBeNull();
+    await press('category-all');
+
+    // Only the classes that are ready are offered.
+    await press('exam-cbse');
+    expect(await screen.findByTestId('level-9')).toBeTruthy();
+    expect(screen.queryByTestId('level-6')).toBeNull();
+    await press('exam-change');
+
+    await press('exam-jee-main');
+    expect(await screen.findByTestId('selected-exam')).toBeTruthy();
+    expect(screen.queryByTestId('level-9')).toBeNull();
+    for (const step of ['exam-continue', 'subjects-continue']) {
+      await screen.findByTestId(step);
+      await press(step);
+    }
+    // Chapters are grouped by unit.
+    expect(await screen.findByText('MECHANICS')).toBeTruthy();
+    for (const step of ['taught-continue', 'tests-continue', 'build-plan']) {
+      await screen.findByTestId(step);
+      await press(step);
+    }
+    expect(await screen.findByTestId('today-screen')).toBeTruthy();
+
+    const saved = await savedPlanner(MEERA);
+    expect(saved.profile).toMatchObject({ board: 'jee-main', boardName: 'JEE Main', examShortName: 'JEE Main', examCategory: 'engineering', cls: null, ageMode: 'deeper' });
+    expect(saved.profile.level).toBeUndefined();
+    expect(saved.chapters.find((chapter) => chapter.key === 'physics-1')).toMatchObject({
+      unit: 'Mechanics',
+      important: true,
+      weightage: 8,
+      grade: 11,
+      topics: [{ name: 'Projectile motion', important: true, subtopics: [{ name: 'Range' }] }],
+    });
+
+    await openProfile();
+    expect(await screen.findByText('JEE Main')).toBeTruthy();
   });
 
   it('adds a unit test to the datesheet on the phone and plans its study slots', async () => {
@@ -207,7 +288,7 @@ describe('the app, with the plan kept on the phone', () => {
     await render(<App />);
     await signIn(MEERA);
     await press(await screen.findByTestId('onboarding-start').then(() => 'onboarding-start'));
-    for (const step of ['class-9', 'class-continue', 'subjects-continue', 'taught-continue', 'tests-continue']) {
+    for (const step of ['exam-cbse', 'level-9', 'exam-continue', 'subjects-continue', 'taught-continue', 'tests-continue']) {
       await screen.findByTestId(step);
       await press(step);
     }

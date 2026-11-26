@@ -35,6 +35,49 @@ describe('setup', () => {
     expect((await dashboardApi.sharing()).boardName).toBe('Odisha Board');
   });
 
+  it('sets up for an exam without classes, keeping units, topics and importance', async () => {
+    const catalog = [
+      {
+        id: 'physics',
+        name: 'Physics',
+        color: '#5856D6',
+        chapters: [
+          { key: 'physics-1', name: 'Kinematics', difficulty: 2, unit: 'Mechanics', important: true, weightage: 8, grade: 11, topics: [{ name: 'Projectile motion', important: true, subtopics: [{ name: 'Range', important: false }] }, { name: '  ' }] },
+          // Odd optional fields are dropped, not fatal.
+          { key: 'physics-2', name: 'Laws of Motion', difficulty: 3, unit: 'Mechanics', weightage: 'lots', priority: 'urgent', topics: 'none' },
+        ],
+      },
+    ];
+    const { profile } = await profileApi.onboard({
+      ...ONBOARDING,
+      board: 'jee-main',
+      boardName: 'JEE Main',
+      examShortName: 'JEE Main',
+      examCategory: 'engineering',
+      syllabusYear: '2026-27',
+      cls: null,
+      catalog,
+      subjects: ['physics'],
+      taughtChapterKeys: [],
+      exams: [],
+    });
+    expect(profile).toMatchObject({ board: 'jee-main', cls: null, ageMode: 'deeper', examShortName: 'JEE Main', level: null, syllabusYear: '2026-27' });
+    const chapters = await chaptersApi.list('physics');
+    expect(chapters[0]).toMatchObject({ unit: 'Mechanics', important: true, weightage: 8, grade: 11, topics: [{ name: 'Projectile motion', important: true, subtopics: [{ name: 'Range' }] }] });
+    expect(chapters[1]).toMatchObject({ unit: 'Mechanics', important: false, weightage: null, topics: [] });
+    expect(read().chapters[1]).not.toHaveProperty('priority');
+  });
+
+  it('keeps the level of exams with stages, and the class of school levels', async () => {
+    const stage = await profileApi.onboard({ ...ONBOARDING, board: 'upsc-cse', boardName: 'UPSC Civil Services', cls: undefined, level: 'prelims', levelName: 'Prelims' });
+    expect(stage.profile).toMatchObject({ cls: null, level: 'prelims', levelName: 'Prelims' });
+    await profileApi.wipe();
+    const school = await profileApi.onboard({ ...ONBOARDING, cls: 7, level: '7', levelName: 'Class 7' });
+    expect(school.profile).toMatchObject({ cls: 7, levelName: 'Class 7', ageMode: 'simple' });
+    await profileApi.wipe();
+    await expect(profileApi.onboard({ ...ONBOARDING, cls: 13 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('needs setup before planner screens', async () => {
     await expect(dashboardApi.today()).rejects.toMatchObject({ status: 404, code: 'ONBOARDING_REQUIRED' });
   });

@@ -9,8 +9,14 @@ const CUSTOM_COLORS = ['#5AC8FA', '#FFCC00', '#5856D6', '#A2845E', '#30B0C7', '#
 const initialDraft = () => ({
   /** What the student wants to be called. Starts as their Google name; they can change it. */
   name: null,
-  board: 'cbse',
-  boardName: 'CBSE',
+  /** The exam or board picked (its code; called `board` because phones always stored it so). */
+  board: null,
+  boardName: null,
+  /** Short name, category and labels of the exam, for headings ("JEE Main", "Class"). */
+  exam: null,
+  /** `{ key, name, grade? }` when the exam has levels (classes, stages), else null. */
+  level: null,
+  /** The school class: the level's grade, or null for exams without classes. */
   cls: null,
   /** Catalogue subjects the student switched off. Everything else in the class is on. */
   turnedOff: [],
@@ -45,13 +51,29 @@ function nextCustomId(customSubjects) {
   return null;
 }
 
+/** True once an exam is picked, and a level too if the exam has levels. */
+export const examChosen = (draft) => Boolean(draft.board && (!draft.exam?.hasLevels || draft.level));
+
 /** The set-up answers, kept across the five steps until "Build my plan". */
 export const useOnboardingStore = create((set) => ({
   draft: initialDraft(),
   update: (patch) => set((state) => ({ draft: { ...state.draft, ...patch } })),
-  setBoard: (board, boardName) =>
-    set((state) => (state.draft.board === board ? state : { draft: { ...state.draft, board, boardName, cls: null, turnedOff: [], taught: {}, exams: [] } })),
-  setClass: (cls) => set((state) => (state.draft.cls === cls ? state : { draft: { ...state.draft, cls, turnedOff: [], taught: {}, exams: [] } })),
+  /** Picks an exam (as `GET /syllabus/exams` lists it). Subjects, ticks and tests start over. */
+  setExam: (exam) =>
+    set((state) => {
+      if (exam && state.draft.board === exam.code) return state;
+      const info = exam
+        ? { code: exam.code, shortName: exam.shortName, category: exam.category, categoryGroup: exam.categoryGroup, levelLabel: exam.levelLabel, unitLabel: exam.unitLabel, hasLevels: exam.levels.length > 0, color: exam.color, logoUrl: exam.logoUrl }
+        : null;
+      return { draft: { ...state.draft, board: exam?.code ?? null, boardName: exam?.name ?? null, exam: info, level: null, cls: null, turnedOff: [], taught: {}, exams: [] } };
+    }),
+  /** Picks a level of the exam: `{ key, name, grade? }`. */
+  setLevel: (level) =>
+    set((state) =>
+      state.draft.level?.key === level.key
+        ? state
+        : { draft: { ...state.draft, level: { key: level.key, name: level.name, ...(level.grade ? { grade: level.grade } : {}) }, cls: level.grade ?? null, turnedOff: [], taught: {}, exams: [] } },
+    ),
   toggleSubject: (subject) =>
     set((state) => {
       const off = state.draft.turnedOff;

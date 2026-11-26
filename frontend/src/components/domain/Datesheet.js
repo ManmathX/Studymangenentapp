@@ -1,7 +1,7 @@
-import { memo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useRef, useState } from 'react';
+import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
-import { datesheetSections } from '../../utils/datesheet';
+import { datesheetSections, EXAM_KINDS } from '../../utils/datesheet';
 import { dayOfMonth, diffDays, plural, shortMonth, shortWeekday } from '../../utils/format';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
@@ -155,50 +155,102 @@ const defaultSyllabus = (exam) => (exam.chapters ?? []).map((chapter) => chapter
  */
 const SECTION_LOOK = { unit: ['list', 'tint'], term: ['trophy', 'warning'], other: ['star', 'success'] };
 
+/** Dropdown "Add" button for sections with multiple exam kinds. */
+function AddDropdown({ section, onAdd, disabled }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState(null);
+  const btnRef = useRef(null);
+  const kinds = EXAM_KINDS.filter((k) => section.kinds.includes(k.value));
+  if (kinds.length === 1) {
+    return (
+      <Button title="Add" icon="plus" size="sm" variant={section.groups.length ? 'secondary' : 'primary'} accessibilityLabel={section.addLabel} onPress={() => onAdd(section.addKind)} disabled={disabled} testID={`datesheet-add-${section.value}`} />
+    );
+  }
+  const measure = () =>
+    btnRef.current?.measure((_x, _y, w, h, px, py) => {
+      const screenW = Dimensions.get('window').width;
+      const menuW = 160;
+      const left = Math.min(Math.max(px + w - menuW, 8), screenW - menuW - 8);
+      setAnchor({ left, top: py + h + 4 });
+      setOpen(true);
+    });
+  return (
+    <View ref={btnRef}>
+      <Button title="Add" icon="plus" size="sm" variant={section.groups.length ? 'secondary' : 'primary'} accessibilityLabel={section.addLabel} onPress={measure} disabled={disabled} testID={`datesheet-add-${section.value}`} />
+      <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setOpen(false)}>
+          <View style={[styles.menu, { backgroundColor: colors.card, borderColor: colors.separator, top: anchor?.top ?? 0, left: anchor?.left ?? 0, width: 160 }]}>
+            {kinds.map((k, i) => (
+              <View key={k.value}>
+                {i > 0 ? <View style={[styles.menuDivider, { backgroundColor: colors.separator }]} /> : null}
+                <Pressable
+                  onPress={() => { setOpen(false); onAdd(k.value); }}
+                  style={({ pressed }) => [styles.menuItem, { opacity: pressed ? 0.5 : 1 }]}
+                  accessibilityRole="menuitem"
+                >
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>{k.label}</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 export function Datesheet({ exams, today, subjectOf, syllabusOf = defaultSyllabus, onAdd, onEdit, onRemove, onEditGroup, onRemoveGroup, busy = false }) {
   const { colors } = useTheme();
   const daysLeftOf = (exam) => exam.daysLeft ?? diffDays(today, exam.date);
   const nextId = [...exams].sort((a, b) => daysLeftOf(a) - daysLeftOf(b))[0]?.id;
   const shared = { nextId, daysLeftOf, subjectOf, syllabusOf, onEdit, onRemove, onEditGroup, onRemoveGroup, busy };
+  const sections = datesheetSections(exams);
+  const visibleSections = sections.filter((s) => s.groups.length > 0);
   return (
     <View style={styles.sections}>
-      {datesheetSections(exams).map((section) => (
-        <View key={section.value} style={styles.section} testID={`datesheet-section-${section.value}`}>
-          <View style={styles.sectionHead}>
-            <IconTile name={SECTION_LOOK[section.value]?.[0] ?? 'today'} color={colors[SECTION_LOOK[section.value]?.[1]] ?? colors.tint} size={26} />
-            <View style={styles.flex}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
-                {section.title}
-              </Text>
-              <Text style={[styles.sectionMeta, { color: colors.textSecondary }]} numberOfLines={2}>
-                {section.groups.length ? plural(section.groups.length, 'exam') : section.empty}
-              </Text>
+      {visibleSections.length === 0 ? (
+        <Text style={{ color: colors.textSecondary, fontSize: 14, textAlign: 'center', paddingVertical: 12 }}>No exams on the datesheet yet.</Text>
+      ) : (
+        visibleSections.map((section) => (
+          <View key={section.value} style={styles.section} testID={`datesheet-section-${section.value}`}>
+            <View style={styles.sectionHead}>
+              <IconTile name={SECTION_LOOK[section.value]?.[0] ?? 'today'} color={colors[SECTION_LOOK[section.value]?.[1]] ?? colors.tint} size={26} />
+              <View style={styles.flex}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+                  {section.title}
+                </Text>
+                <Text style={[styles.sectionMeta, { color: colors.textSecondary }]} numberOfLines={2}>
+                  {plural(section.groups.length, 'exam')}
+                </Text>
+              </View>
+              {onAdd ? <AddDropdown section={section} onAdd={onAdd} disabled={busy} /> : null}
             </View>
-            {onAdd ? (
-              <Button
-                title="Add"
-                icon="plus"
-                size="sm"
-                variant={section.groups.length ? 'secondary' : 'primary'}
-                accessibilityLabel={section.addLabel}
-                onPress={() => onAdd(section.addKind)}
-                disabled={busy}
-                testID={`datesheet-add-${section.value}`}
-              />
-            ) : null}
+            {section.groups.map((group) => (
+              <Group key={group.title} group={group} {...shared} />
+            ))}
           </View>
-          {section.groups.map((group) => (
-            <Group key={group.title} group={group} {...shared} />
+        ))
+      )}
+      {onAdd ? (
+        <View style={styles.addRow}>
+          {sections.map((section) => (
+            <AddDropdown key={section.value} section={section} onAdd={onAdd} disabled={busy} />
           ))}
         </View>
-      ))}
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sections: { gap: 20 },
-  section: { gap: 10, alignItems: 'stretch' },
+  overlay: { flex: 1 },
+  menu: { position: 'absolute', borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
+  menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
+  menuDivider: { height: StyleSheet.hairlineWidth },
+  sections: { gap: 14 },
+  section: { gap: 8, alignItems: 'stretch' },
+  addRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
   sectionTitle: { fontSize: 15.5, fontWeight: '800' },
   sectionMeta: { fontSize: 12, marginTop: 1, lineHeight: 16 },

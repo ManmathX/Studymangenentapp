@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button } from '../../components/ui/Button';
+import { ChapterSeparator } from '../../components/domain/SyllabusBits';
 import { CheckRow, Chip, ChipGroup } from '../../components/ui/Controls';
-import { Card, Divider, Muted } from '../../components/ui/Layout';
+import { Card, Muted } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { StepLayout } from './StepLayout';
@@ -17,8 +18,8 @@ export function TaughtStep({ navigation }) {
   return (
     <StepLayout
       step={3}
-      title="What’s been taught?"
-      lead="Tick the chapters your school has already covered. You can change this later."
+      title="What have you covered?"
+      lead="Tick the chapters already taught at school or coaching, or that you’ve studied. You can change this later."
       footer={<Button title="Continue" variant="primary" block onPress={() => navigation.navigate('TestsStep')} testID="taught-continue" />}
     >
       <AsyncBoundary resource={syllabus}>
@@ -31,7 +32,7 @@ export function TaughtStep({ navigation }) {
             </ChipGroup>
             <Card flush>
               {current?.chapters.map((chapter, index) => (
-                <ChapterCheck key={chapter.key} first={index === 0} chapter={chapter} checked={Boolean(draft.taught[chapter.key])} onToggle={toggleTaught} />
+                <ChapterCheck key={chapter.key} index={index} previous={current.chapters[index - 1]} chapter={chapter} checked={Boolean(draft.taught[chapter.key])} onToggle={toggleTaught} />
               ))}
             </Card>
             <Muted small>Ticked chapters start as Studied. Mark them Practiced, Revised or Mastered from Progress.</Muted>
@@ -42,10 +43,10 @@ export function TaughtStep({ navigation }) {
   );
 }
 
-function ChapterCheck({ chapter, checked, first, onToggle }) {
+function ChapterCheck({ chapter, checked, index, previous, onToggle }) {
   return (
     <>
-      {first ? null : <Divider />}
+      <ChapterSeparator chapter={chapter} previous={previous} index={index} />
       <CheckRow label={chapter.name} checked={checked} onToggle={() => onToggle(chapter.key)} />
     </>
   );

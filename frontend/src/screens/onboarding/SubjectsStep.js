@@ -10,6 +10,7 @@ import { MAX_CUSTOM_CHAPTERS, MAX_CUSTOM_SUBJECTS, useOnboardingStore } from '..
 import { toast } from '../../store/toastStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { confirmAction } from '../../utils/confirm';
+import { examLabel } from '../../utils/exam';
 import { plural } from '../../utils/format';
 import { FieldHeading, StepLayout } from './StepLayout';
 import { useDraftSubjects } from './useDraftSubjects';
@@ -39,7 +40,7 @@ export function SubjectsStep({ navigation }) {
     <StepLayout
       step={2}
       title="Your subjects"
-      lead={`${plural(total, 'chapter')} for ${draft.boardName} Class ${draft.cls}. Turn off any subject you don’t take, or add one that’s missing.`}
+      lead={`${plural(total, 'chapter')} for ${examLabel({ boardName: draft.boardName, levelName: draft.level?.name })}. Turn off any subject you don’t take, or add one that’s missing.`}
       footer={<Button title="Continue" variant="primary" block disabled={!chosen.length || editing !== null} onPress={() => navigation.navigate('TaughtStep')} testID="subjects-continue" />}
     >
       <AsyncBoundary resource={syllabus}>

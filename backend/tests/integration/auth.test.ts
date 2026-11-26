@@ -136,10 +136,17 @@ describe('student data stays on the phone', () => {
   it('has no database model for anything but logins, sessions, reset codes, the audit log and the syllabus', () => {
     expect(mongoose.modelNames().sort()).toEqual([
       'AuditLog',
+      // Legacy board catalogue, read once to copy it into exams.
       'Board',
+      'CatalogMigration',
       'CatalogSubject',
+      'Exam',
+      'ExamCategory',
+      'ExamLogo',
       'PasswordReset',
       'RefreshToken',
+      'SyllabusSubject',
+      'SyllabusVersion',
       'User',
     ]);
   });

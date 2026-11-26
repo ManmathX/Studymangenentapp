@@ -121,3 +121,20 @@ export function as(app: Express, token: string) {
     delete: (path: string, body?: object) => auth(request(app).delete(`/api/v1${path}`)).send(body),
   };
 }
+
+/** An account with `role` (set in the database, as `npm run create-admin` does), signed in. */
+export async function staff(app: Express, role: 'admin' | 'editor', name = 'Staff') {
+  const session = await register(app, name);
+  await mongoose.connection
+    .collection('users')
+    .updateOne({ _id: new mongoose.Types.ObjectId(session.userId) }, { $set: { role } });
+  const login = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ email: session.email, password: PASSWORD })
+    .expect(200);
+  return {
+    ...session,
+    user: login.body.data.user as { role: string; permissions: string[] },
+    api: as(app, login.body.data.tokens.accessToken as string),
+  };
+}

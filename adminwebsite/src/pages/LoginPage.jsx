@@ -19,8 +19,8 @@ export function LoginPage() {
         }}
       >
         <span className="brand-mark large" aria-hidden="true" />
-        <h1>Syllabus Admin</h1>
-        <p className="muted">Manage boards, classes, subjects and chapters for the Study Planner app.</p>
+        <h1>Exam Admin</h1>
+        <p className="muted">Manage boards, competitive exams and their syllabi for the Study Planner app.</p>
         <label className="field">
           <span>Email</span>
           <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
@@ -33,7 +33,7 @@ export function LoginPage() {
         <button className="btn primary block" disabled={submit.busy}>
           {submit.busy ? 'Signing in…' : 'Sign in'}
         </button>
-        <p className="muted small">Only admin accounts can sign in. Create the first one with <code>npm run create-admin</code> in <code>backend/</code>.</p>
+        <p className="muted small">Admin and editor accounts can sign in. Create the first admin with <code>npm run create-admin</code> in <code>backend/</code>.</p>
       </form>
     </div>
   )

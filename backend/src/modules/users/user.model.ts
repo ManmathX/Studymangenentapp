@@ -1,4 +1,5 @@
 import { model, Schema, type Types } from 'mongoose';
+import { ROLES } from '../../common/http/permissions.js';
 import type { Role } from '../../common/http/types.js';
 
 export interface UserDocument {
@@ -23,7 +24,7 @@ const userSchema = new Schema<UserDocument>(
     passwordHash: { type: String, select: false },
     hasPassword: { type: Boolean, default: true },
     googleId: { type: String, select: false },
-    role: { type: String, enum: ['student', 'admin'], default: 'student' },
+    role: { type: String, enum: ROLES, default: 'student' },
     lastLoginAt: { type: Date },
   },
   { timestamps: true },

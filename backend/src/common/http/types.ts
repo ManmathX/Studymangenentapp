@@ -1,4 +1,5 @@
-export type Role = 'student' | 'admin';
+/** `editor` manages exam and syllabus content; only `admin` publishes and manages accounts. */
+export type Role = 'student' | 'editor' | 'admin';
 
 export interface AuthContext {
   userId: string;

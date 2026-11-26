@@ -1,7 +1,7 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoadingState } from '../components/ui/States';
 import { LoginScreen } from '../screens/auth/LoginScreen';
-import { ClassStep, SchoolDayStep, SubjectsStep, TaughtStep, TestsStep, WelcomeStep } from '../screens/onboarding/OnboardingSteps';
+import { ExamStep, SchoolDayStep, SubjectsStep, TaughtStep, TestsStep, WelcomeStep } from '../screens/onboarding/OnboardingSteps';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../theme/ThemeProvider';
 import { MainTabs } from './MainTabs';
@@ -48,7 +48,7 @@ export function RootNavigator() {
     return (
       <Stack.Navigator screenOptions={{ ...header, headerBackTitle: 'Back', title: '' }}>
         <Stack.Screen name="Welcome" component={WelcomeStep} options={{ headerShown: false }} />
-        <Stack.Screen name="ClassStep" component={ClassStep} />
+        <Stack.Screen name="ExamStep" component={ExamStep} />
         <Stack.Screen name="SubjectsStep" component={SubjectsStep} />
         <Stack.Screen name="TaughtStep" component={TaughtStep} />
         <Stack.Screen name="TestsStep" component={TestsStep} />

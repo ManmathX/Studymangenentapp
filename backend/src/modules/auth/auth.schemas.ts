@@ -1,3 +1,4 @@
+import { PERMISSIONS, ROLES } from '../../common/http/permissions.js';
 import { z } from '../../common/zod.js';
 
 const email = z.string().trim().toLowerCase().pipe(z.email('Enter a valid email address').max(254));
@@ -77,7 +78,10 @@ export const userSchema = z
     id: z.string(),
     email: z.string(),
     name: z.string(),
-    role: z.enum(['student', 'admin']),
+    role: z.enum(ROLES),
+    permissions: z
+      .array(z.enum(PERMISSIONS))
+      .openapi({ description: 'What this account may do in the admin portal' }),
     hasPassword: z.boolean(),
     createdAt: z.string(),
     lastLoginAt: z.string().nullable(),

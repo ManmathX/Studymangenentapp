@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { Datesheet } from '../../components/domain/Datesheet';
 import { Button } from '../../components/ui/Button';
@@ -100,21 +100,60 @@ function DayDetails({ data }) {
   );
 }
 
+const EXAM_MENU = [
+  { value: 'unit', label: 'Unit test' },
+  { value: 'periodic', label: 'Periodic test' },
+  { value: 'halfYearly', label: 'Half-yearly' },
+  { value: 'final', label: 'Final exam' },
+  { value: 'other', label: 'Other exam' },
+];
+
 /** Three big "add" tiles: a chapter from the syllabus, homework, or a test. */
 function PlanTools({ navigation }) {
   const { colors } = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [anchor, setAnchor] = useState(null);
+  const tileRef = useRef(null);
+  const openMenu = () =>
+    tileRef.current?.measure((_x, _y, w, h, px, py) => {
+      const screenW = Dimensions.get('window').width;
+      const menuW = 160;
+      const left = Math.min(Math.max(px + w - menuW, 8), screenW - menuW - 8);
+      setAnchor({ left, top: py + h + 4 });
+      setMenuOpen(true);
+    });
   return (
     <Section title="Add to your plan" icon="plus" bare>
       <View style={styles.tools}>
         <ToolTile icon="book" color="#06B6D4" label="Chapter" hint="from syllabus" onPress={() => navigation.navigate('Syllabus')} testID="open-syllabus" />
         <ToolTile icon="homework" color={colors.tint} label="Homework" hint="due soon" onPress={() => navigation.navigate('NewHomework')} />
-        <ToolTile icon="trophy" color={colors.warning} label="Exam" hint="test or olympiad" onPress={() => navigation.navigate('NewDatesheet', { kind: 'other' })} testID="add-exam" />
+        <View ref={tileRef} style={styles.toolWrap}>
+          <ToolTile icon="trophy" color={colors.warning} label="Exam" hint="test or olympiad" onPress={openMenu} testID="add-exam" style={styles.toolFill} />
+        </View>
       </View>
+      <Modal visible={menuOpen} transparent animationType="none" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setMenuOpen(false)}>
+          <View style={[styles.menu, { backgroundColor: colors.card, borderColor: colors.separator, top: anchor?.top ?? 0, left: anchor?.left ?? 0, width: 160 }]}>
+            {EXAM_MENU.map((item, i) => (
+              <View key={item.value}>
+                {i > 0 ? <View style={[styles.menuDivider, { backgroundColor: colors.separator }]} /> : null}
+                <Pressable
+                  onPress={() => { setMenuOpen(false); navigation.navigate('NewDatesheet', { kind: item.value }); }}
+                  style={({ pressed }) => [styles.menuItem, { opacity: pressed ? 0.5 : 1 }]}
+                  accessibilityRole="menuitem"
+                >
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>{item.label}</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </Section>
   );
 }
 
-function ToolTile({ icon, color, label, hint, onPress, testID }) {
+function ToolTile({ icon, color, label, hint, onPress, testID, style }) {
   const { colors, radius } = useTheme();
   return (
     <PressableScale
@@ -122,7 +161,7 @@ function ToolTile({ icon, color, label, hint, onPress, testID }) {
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={`Add ${label.toLowerCase()} ${hint}`}
-      style={[styles.tool, { backgroundColor: colors.card, borderRadius: radius.lg, boxShadow: colors.shadow }]}
+      style={[styles.tool, { backgroundColor: colors.card, borderRadius: radius.lg, boxShadow: colors.shadow }, style]}
     >
       <IconTile name={icon} color={color} size={36} />
       <Text style={[styles.toolLabel, { color: colors.text }]}>{label}</Text>
@@ -135,7 +174,6 @@ function ToolTile({ icon, color, label, hint, onPress, testID }) {
 
 /** Every exam in one place: unit tests, half-yearly & final, and other exams, each with its syllabus. */
 function DatesheetSection({ navigation }) {
-  const { colors } = useTheme();
   const exams = useResource(resources.exams);
   const subjectOf = useSubjectInfo();
   const remove = useAsyncAction(examActions.remove);
@@ -143,21 +181,19 @@ function DatesheetSection({ navigation }) {
   const busy = remove.pending || removeGroup.pending;
   const edit = (exam) => navigation.navigate('EditExam', { exam: { id: exam.id, subject: exam.subject, name: exam.name, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys } });
   return (
-    <Section title="Datesheet" icon="today" iconColor={colors.danger} bare footer="Tap a paper to see its syllabus. Use the pencil to change its date or chapters.">
-      <AsyncBoundary resource={exams}>
-        {(list) => (
-          <Datesheet
-            exams={list}
-            subjectOf={subjectOf}
-            onAdd={(kind) => navigation.navigate('NewDatesheet', { kind })}
-            onEdit={edit}
-            onRemove={remove.execute}
-            onRemoveGroup={(group) => (group.exams.length > 1 ? removeGroup.execute(group) : remove.execute(group.exams[0]))}
-            busy={busy}
-          />
-        )}
-      </AsyncBoundary>
-    </Section>
+    <AsyncBoundary resource={exams}>
+      {(list) => (
+        <Datesheet
+          exams={list}
+          subjectOf={subjectOf}
+          onAdd={(kind) => navigation.navigate('NewDatesheet', { kind })}
+          onEdit={edit}
+          onRemove={remove.execute}
+          onRemoveGroup={(group) => (group.exams.length > 1 ? removeGroup.execute(group) : remove.execute(group.exams[0]))}
+          busy={busy}
+        />
+      )}
+    </AsyncBoundary>
   );
 }
 
@@ -169,6 +205,12 @@ const styles = StyleSheet.create({
   note: { marginTop: 6 },
   buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   tools: { flexDirection: 'row', gap: 8 },
+  toolWrap: { flex: 1 },
+  toolFill: { flex: 1 },
+  overlay: { flex: 1 },
+  menu: { position: 'absolute', borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
+  menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
+  menuDivider: { height: StyleSheet.hairlineWidth },
   tool: { flex: 1, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6, gap: 4 },
   toolLabel: { fontSize: 14, fontWeight: '800' },
   toolHint: { fontSize: 11 },

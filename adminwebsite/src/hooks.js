@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useBlocker } from 'react-router-dom'
 
 /** Runs an async action, tracking busy state and the last error message. */
 export function useAction(action) {
@@ -21,7 +22,7 @@ export function useAction(action) {
 
 /**
  * Loads data with `load()` whenever `deps` change, and again on `reload()`. While new deps load,
- * data from old deps is hidden (so you never edit the wrong class); a reload keeps showing it.
+ * data from old deps is hidden (so you never edit the wrong thing); a reload keeps showing it.
  */
 export function useLoad(load, deps) {
   const depsKey = JSON.stringify(deps)
@@ -46,6 +47,34 @@ export function useLoad(load, deps) {
     error: state.depsKey === depsKey ? state.error : null,
     loading: state.requestKey !== requestKey,
     reload: () => setVersion((n) => n + 1),
-    setData: (data) => setState((current) => ({ ...current, data })),
+    setData: (data) => setState((current) => ({ ...current, data: typeof data === 'function' ? data(current.data) : data })),
   }
+}
+
+/** `value`, but only after it stopped changing for `ms` (search boxes). */
+export function useDebounced(value, ms = 250) {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return settled
+}
+
+/**
+ * Warns before leaving with unsaved changes: the browser asks on reload or close, and in-app
+ * navigation is held (render a prompt while `blocker.state === 'blocked'`).
+ */
+export function useUnsavedChanges(dirty) {
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && `${currentLocation.pathname}${currentLocation.search}` !== `${nextLocation.pathname}${nextLocation.search}`)
+  useEffect(() => {
+    if (!dirty) return undefined
+    const warn = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+  return blocker
 }

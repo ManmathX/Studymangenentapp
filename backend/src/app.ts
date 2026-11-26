@@ -9,9 +9,10 @@ import type { AppConfig } from './config/env.js';
 import type { Logger } from 'pino';
 import { createErrorHandler, notFoundHandler } from './common/middleware/error-handler.js';
 import { requestId } from './common/middleware/request-id.js';
+import { API_PREFIX } from './common/http/prefix.js';
 import { buildOpenApiDocument } from './docs/openapi.js';
 
-export const API_PREFIX = '/api/v1';
+export { API_PREFIX };
 
 /**
  * helmet ships separate ESM and CommonJS type files. Vercel's type checker reads the CommonJS one,
@@ -59,6 +60,8 @@ export function createApp(config: AppConfig, logger: Logger, container: Containe
     }),
   );
   app.use(compression());
+  // Admins save whole syllabus subjects, import sheets and upload logos; everything else is small.
+  app.use(`${API_PREFIX}/admin`, express.json({ limit: '2mb', strict: true }));
   app.use(express.json({ limit: '100kb', strict: true }));
 
   if (config.API_DOCS_ENABLED) {
