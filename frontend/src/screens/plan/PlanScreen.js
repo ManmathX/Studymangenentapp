@@ -174,6 +174,7 @@ function ToolTile({ icon, color, label, hint, onPress, testID, style }) {
 
 /** Every exam in one place: unit tests, half-yearly & final, and other exams, each with its syllabus. */
 function DatesheetSection({ navigation }) {
+  const { colors } = useTheme();
   const exams = useResource(resources.exams);
   const subjectOf = useSubjectInfo();
   const remove = useAsyncAction(examActions.remove);
@@ -181,19 +182,21 @@ function DatesheetSection({ navigation }) {
   const busy = remove.pending || removeGroup.pending;
   const edit = (exam) => navigation.navigate('EditExam', { exam: { id: exam.id, subject: exam.subject, name: exam.name, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys } });
   return (
-    <AsyncBoundary resource={exams}>
-      {(list) => (
-        <Datesheet
-          exams={list}
-          subjectOf={subjectOf}
-          onAdd={(kind) => navigation.navigate('NewDatesheet', { kind })}
-          onEdit={edit}
-          onRemove={remove.execute}
-          onRemoveGroup={(group) => (group.exams.length > 1 ? removeGroup.execute(group) : remove.execute(group.exams[0]))}
-          busy={busy}
-        />
-      )}
-    </AsyncBoundary>
+    <Section title="Datesheet" icon="today" iconColor={colors.danger} bare footer="Tap a paper to see its syllabus. Use the pencil to change its date or chapters.">
+      <AsyncBoundary resource={exams}>
+        {(list) => (
+          <Datesheet
+            exams={list}
+            subjectOf={subjectOf}
+            onAdd={(kind) => navigation.navigate('NewDatesheet', { kind })}
+            onEdit={edit}
+            onRemove={remove.execute}
+            onRemoveGroup={(group) => (group.exams.length > 1 ? removeGroup.execute(group) : remove.execute(group.exams[0]))}
+            busy={busy}
+          />
+        )}
+      </AsyncBoundary>
+    </Section>
   );
 }
 

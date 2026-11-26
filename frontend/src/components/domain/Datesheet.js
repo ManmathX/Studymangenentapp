@@ -205,40 +205,27 @@ export function Datesheet({ exams, today, subjectOf, syllabusOf = defaultSyllabu
   const daysLeftOf = (exam) => exam.daysLeft ?? diffDays(today, exam.date);
   const nextId = [...exams].sort((a, b) => daysLeftOf(a) - daysLeftOf(b))[0]?.id;
   const shared = { nextId, daysLeftOf, subjectOf, syllabusOf, onEdit, onRemove, onEditGroup, onRemoveGroup, busy };
-  const sections = datesheetSections(exams);
-  const visibleSections = sections.filter((s) => s.groups.length > 0);
   return (
     <View style={styles.sections}>
-      {visibleSections.length === 0 ? (
-        <Text style={{ color: colors.textSecondary, fontSize: 14, textAlign: 'center', paddingVertical: 12 }}>No exams on the datesheet yet.</Text>
-      ) : (
-        visibleSections.map((section) => (
-          <View key={section.value} style={styles.section} testID={`datesheet-section-${section.value}`}>
-            <View style={styles.sectionHead}>
-              <IconTile name={SECTION_LOOK[section.value]?.[0] ?? 'today'} color={colors[SECTION_LOOK[section.value]?.[1]] ?? colors.tint} size={26} />
-              <View style={styles.flex}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
-                  {section.title}
-                </Text>
-                <Text style={[styles.sectionMeta, { color: colors.textSecondary }]} numberOfLines={2}>
-                  {plural(section.groups.length, 'exam')}
-                </Text>
-              </View>
-              {onAdd ? <AddDropdown section={section} onAdd={onAdd} disabled={busy} /> : null}
+      {datesheetSections(exams).map((section) => (
+        <View key={section.value} style={styles.section} testID={`datesheet-section-${section.value}`}>
+          <View style={styles.sectionHead}>
+            <IconTile name={SECTION_LOOK[section.value]?.[0] ?? 'today'} color={colors[SECTION_LOOK[section.value]?.[1]] ?? colors.tint} size={26} />
+            <View style={styles.flex}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} accessibilityRole="header">
+                {section.title}
+              </Text>
+              <Text style={[styles.sectionMeta, { color: colors.textSecondary }]} numberOfLines={2}>
+                {section.groups.length ? plural(section.groups.length, 'exam') : section.empty}
+              </Text>
             </View>
-            {section.groups.map((group) => (
-              <Group key={group.title} group={group} {...shared} />
-            ))}
+            {onAdd ? <AddDropdown section={section} onAdd={onAdd} disabled={busy} /> : null}
           </View>
-        ))
-      )}
-      {onAdd ? (
-        <View style={styles.addRow}>
-          {sections.map((section) => (
-            <AddDropdown key={section.value} section={section} onAdd={onAdd} disabled={busy} />
+          {section.groups.map((group) => (
+            <Group key={group.title} group={group} {...shared} />
           ))}
         </View>
-      ) : null}
+      ))}
     </View>
   );
 }
@@ -248,9 +235,8 @@ const styles = StyleSheet.create({
   menu: { position: 'absolute', borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
   menuItem: { paddingHorizontal: 14, paddingVertical: 11 },
   menuDivider: { height: StyleSheet.hairlineWidth },
-  sections: { gap: 14 },
-  section: { gap: 8, alignItems: 'stretch' },
-  addRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  sections: { gap: 20 },
+  section: { gap: 10, alignItems: 'stretch' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
   sectionTitle: { fontSize: 15.5, fontWeight: '800' },
   sectionMeta: { fontSize: 12, marginTop: 1, lineHeight: 16 },
