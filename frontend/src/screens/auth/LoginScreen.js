@@ -37,6 +37,7 @@ export function LoginScreen({ navigation }) {
         </Text>
       ) : null}
       <Button title="Sign in with email" variant="primary" onPress={onSubmit} loading={isSubmitting} block testID="login-submit" />
+      <Button title="Forgot password?" variant="ghost" onPress={() => navigation.navigate('ForgotPassword')} testID="open-forgot-password" />
       <Button title="New here? Create an account" variant="ghost" onPress={() => navigation.navigate('Register')} />
     </AuthLayout>
   );

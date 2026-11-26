@@ -44,6 +44,14 @@ const envSchema = z.object({
         .map((id) => id.trim())
         .filter(Boolean),
     ),
+  /**
+   * Email for "forgot password" codes, as an SMTP URL such as
+   * smtps://user:password@smtp.example.com:465. Empty turns password reset off.
+   */
+  SMTP_URL: z.string().default(''),
+  /** Sender shown on those emails, e.g. "Study Planner <no-reply@example.com>". Needed with SMTP_URL. */
+  MAIL_FROM: z.string().default(''),
+  PASSWORD_RESET_CODE_TTL_MINUTES: z.coerce.number().int().min(5).max(60).default(15),
   RATE_LIMIT_ENABLED: booleanFromString.default(true),
   RATE_LIMIT_GLOBAL_PER_MINUTE: z.coerce.number().int().min(10).max(100_000).default(300),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().min(1).max(10_000).default(20),
@@ -72,8 +80,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   const env = parsed.data;
   const deployed = env.NODE_ENV === 'production' || env.NODE_ENV === 'staging';
-  if (deployed && env.CORS_ORIGINS.includes('*')) {
-    throw new Error(`CORS_ORIGINS must list explicit origins in ${env.NODE_ENV}`);
+  if (env.SMTP_URL && !/^smtps?:\/\//.test(env.SMTP_URL)) {
+    throw new Error('SMTP_URL must start with smtp:// or smtps://');
+  }
+  if (env.SMTP_URL && !env.MAIL_FROM) {
+    throw new Error('MAIL_FROM is required when SMTP_URL is set');
   }
   if (deployed && env.JWT_ACCESS_SECRET === EXAMPLE_JWT_SECRET) {
     throw new Error(

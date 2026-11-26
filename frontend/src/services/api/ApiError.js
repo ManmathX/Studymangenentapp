@@ -1,3 +1,5 @@
+import { AppError } from '../../data/errors';
+
 /** One error shape for every failed request, whatever went wrong. */
 export class ApiError extends Error {
   constructor({ status = 0, code = 'UNKNOWN', message, details = [], requestId = null }) {
@@ -19,8 +21,12 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Turns anything thrown into one error screens can show. Planner errors from this device
+ * (AppError) already have the same shape and pass through unchanged.
+ */
 export function toApiError(error) {
-  if (error instanceof ApiError) return error;
+  if (error instanceof ApiError || error instanceof AppError) return error;
   const response = error?.response;
   if (!response) {
     const timedOut = error?.code === 'ECONNABORTED';

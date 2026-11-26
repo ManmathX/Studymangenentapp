@@ -33,13 +33,25 @@ describe('configuration', () => {
     const production = { ...base, NODE_ENV: 'production', CORS_ORIGINS: 'https://app.example' };
     expect(loadConfig(production).API_DOCS_ENABLED).toBe(false);
     expect(loadConfig({ ...production, API_DOCS_ENABLED: 'true' }).API_DOCS_ENABLED).toBe(true);
-    expect(() => loadConfig({ ...production, CORS_ORIGINS: '*' })).toThrow(/explicit origins/);
+    expect(loadConfig({ ...production, CORS_ORIGINS: '*' }).CORS_ORIGINS).toEqual(['*']);
     expect(() =>
       loadConfig({
         ...production,
         JWT_ACCESS_SECRET: 'replace-with-at-least-32-random-characters',
       }),
     ).toThrow(/example value/);
+  });
+
+  it('needs a sender and an smtp URL for password reset email', () => {
+    expect(loadConfig(base)).toMatchObject({ SMTP_URL: '', PASSWORD_RESET_CODE_TTL_MINUTES: 15 });
+    const smtp = { ...base, SMTP_URL: 'smtps://user:secret@smtp.example.test:465' };
+    expect(() => loadConfig(smtp)).toThrow(/MAIL_FROM is required/);
+    expect(
+      loadConfig({ ...smtp, MAIL_FROM: 'Study Planner <no-reply@example.test>' }).SMTP_URL,
+    ).toBe(smtp.SMTP_URL);
+    expect(() =>
+      loadConfig({ ...base, SMTP_URL: 'https://mail.example.test', MAIL_FROM: 'x@example.test' }),
+    ).toThrow(/smtp:\/\//);
   });
 });
 

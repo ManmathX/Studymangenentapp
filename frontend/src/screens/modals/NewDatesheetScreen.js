@@ -6,6 +6,7 @@ import { useResource } from '../../hooks/useResource';
 import { examActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useSubjectInfo } from '../../store/subjectStore';
+import { seriesOf } from '../../utils/datesheet';
 
 const isTaught = (chapter) => chapter.status !== 'not';
 
@@ -39,7 +40,7 @@ function Form({ profile, chapters, exams, kind, onDone }) {
       })),
     [profile.subjects, chapters, subjectOf],
   );
-  const existingSeries = useMemo(() => [...new Set(exams.map((exam) => exam.series).filter(Boolean))], [exams]);
+  const existingSeries = useMemo(() => [...new Set(exams.map(seriesOf).filter(Boolean))], [exams]);
   return (
     <DatesheetBuilder
       subjects={subjects}

@@ -11,7 +11,7 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
 import { examActions } from '../../services/actions';
 import { resources } from '../../services/resources';
-import { subjects as subjectInfo } from '../../theme/tokens';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { addDays, shortDate } from '../../utils/format';
 
@@ -24,6 +24,7 @@ const FIRST_PAPER_DAYS_AHEAD = 120;
  */
 export function ExamSeriesForm({ profile, type, onDone }) {
   const series = EXAM_SERIES[type];
+  const subjectOf = useSubjectInfo();
   const today = profile.today;
   const days = useMemo(() => Array.from({ length: FIRST_PAPER_DAYS_AHEAD }, (_, index) => addDays(today, index + 1)), [today]);
   const [firstDate, setFirstDate] = useState(addDays(today, type === 'final' ? 60 : 30));
@@ -43,7 +44,7 @@ export function ExamSeriesForm({ profile, type, onDone }) {
     const papers = (draft.data ?? []).map(paperFor).filter((paper) => !paper.excluded);
     if (!papers.length) return setError('Keep at least one paper.');
     const empty = papers.find((paper) => !paper.chapterKeys.length);
-    if (empty) return setError(`Tick at least one ${subjectInfo[empty.subject].name} chapter.`);
+    if (empty) return setError(`Tick at least one ${subjectOf(empty.subject).name} chapter.`);
     setError(null);
     const created = await examActions.createSeries(
       { type, papers: papers.map(({ subject, date, chapterKeys }) => ({ subject, date, chapterKeys })) },
@@ -105,7 +106,7 @@ export function ExamSeriesForm({ profile, type, onDone }) {
 
 function PaperRow({ paper, first, days, today, open, onOpen, onEdit }) {
   const { colors } = useTheme();
-  const name = subjectInfo[paper.subject].name;
+  const name = useSubjectInfo()(paper.subject).name;
   const toggleChapter = (key) =>
     onEdit({ chapterKeys: paper.chapterKeys.includes(key) ? paper.chapterKeys.filter((item) => item !== key) : [...paper.chapterKeys, key] });
   return (

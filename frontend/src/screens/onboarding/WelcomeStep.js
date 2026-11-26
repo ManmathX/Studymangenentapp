@@ -5,14 +5,13 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { profileActions } from '../../services/actions';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
-import { deviceTimeZone } from '../../utils/format';
 import { StepLayout } from './StepLayout';
 
 export function WelcomeStep({ navigation }) {
   const { colors } = useTheme();
   const name = useAuthStore((state) => state.user?.name);
   const logout = useAuthStore((state) => state.logout);
-  const demo = useAsyncAction(() => profileActions.loadDemo(deviceTimeZone()));
+  const demo = useAsyncAction(() => profileActions.loadDemo());
 
   return (
     <StepLayout

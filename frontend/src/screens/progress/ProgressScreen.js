@@ -4,12 +4,13 @@ import { StatusDot, SubjectDot } from '../../components/domain/Badges';
 import { CoverageBar, WeekBars } from '../../components/domain/Charts';
 import { ExamList } from '../../components/domain/ExamList';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Field';
 import { Icon } from '../../components/ui/Icon';
 import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary, EmptyState } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
-import { taskActions } from '../../services/actions';
+import { examActions, taskActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useSubjectInfo } from '../../store/subjectStore';
 import { CHAPTER_STATUS_ORDER, chapterStatus } from '../../theme/tokens';
@@ -29,6 +30,7 @@ export function ProgressScreen({ navigation }) {
             <Section title="Test readiness" flush>
               <ExamList exams={data.upcomingExams} />
             </Section>
+            <Results results={data.results} today={data.today} />
             {data.ageMode === 'simple' ? null : <WeeklyReview slipped={data.slipped} today={data.today} />}
           </>
         )}
@@ -138,6 +140,73 @@ function StudyHours({ data }) {
   );
 }
 
+/** Tests that have happened, newest first, with the marks the student entered. */
+function Results({ results, today }) {
+  return (
+    <Section title="Test results" flush footer={results.length ? 'Add your marks after each test. They stay on this phone.' : undefined}>
+      {results.length ? (
+        results.map((exam, index) => (
+          <View key={exam.id}>
+            {index ? <Divider /> : null}
+            <ResultRow exam={exam} today={today} />
+          </View>
+        ))
+      ) : (
+        <EmptyState message="Your tests show here once they’re done, so you can add your marks." />
+      )}
+    </Section>
+  );
+}
+
+function ResultRow({ exam, today }) {
+  const { colors } = useTheme();
+  const [editing, setEditing] = useState(false);
+  const [score, setScore] = useState(exam.result ? String(exam.result.score) : '');
+  const [outOf, setOutOf] = useState(exam.result ? String(exam.result.outOf) : '');
+  const save = useAsyncAction(async (result) => {
+    const saved = await examActions.setResult(exam, result);
+    if (saved) setEditing(false);
+  });
+  const number = (text) => (text.trim() === '' ? NaN : Number(text.replace(',', '.')));
+
+  return (
+    <View style={styles.result}>
+      <View style={styles.resultHead}>
+        <SubjectDot subject={exam.subject} size={10} />
+        <View style={styles.flex}>
+          <Text style={{ color: colors.text, fontWeight: '600' }}>{exam.name}</Text>
+          <Muted small>{dayName(exam.date, today)}</Muted>
+        </View>
+        {exam.result && !editing ? (
+          <Text style={{ color: colors.text, fontWeight: '700' }}>
+            {exam.result.score}/{exam.result.outOf} · {exam.result.percent}%
+          </Text>
+        ) : null}
+        {editing ? null : (
+          <Button title={exam.result ? 'Edit' : 'Add marks'} size="sm" onPress={() => setEditing(true)} testID={`marks-open-${exam.id}`} />
+        )}
+      </View>
+      {editing ? (
+        <View style={styles.marksForm}>
+          <View style={styles.marksInputs}>
+            <View style={styles.flex}>
+              <Input label="Marks" value={score} onChangeText={setScore} keyboardType="decimal-pad" placeholder="32.5" testID="marks-score" />
+            </View>
+            <View style={styles.flex}>
+              <Input label="Out of" value={outOf} onChangeText={setOutOf} keyboardType="decimal-pad" placeholder="40" testID="marks-out-of" />
+            </View>
+          </View>
+          <View style={styles.marksButtons}>
+            <Button title="Save" variant="primary" size="sm" onPress={() => save.execute({ score: number(score), outOf: number(outOf) })} loading={save.pending} testID="marks-save" />
+            <Button title="Cancel" size="sm" variant="ghost" onPress={() => setEditing(false)} disabled={save.pending} />
+            {exam.result ? <Button title="Remove marks" size="sm" variant="ghost" onPress={() => save.execute(null)} disabled={save.pending} /> : null}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function WeeklyReview({ slipped, today }) {
   const move = useAsyncAction((task) => taskActions.moveTo(task, addDays(today, 1), today));
   return (
@@ -179,4 +248,9 @@ const styles = StyleSheet.create({
   chapterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingLeft: 34, paddingRight: 16, minHeight: 44 },
   meter: { height: 8, borderRadius: 4, flexDirection: 'row', overflow: 'hidden', marginVertical: 12 },
   slipped: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  result: { padding: 14, gap: 12 },
+  resultHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  marksForm: { gap: 10 },
+  marksInputs: { flexDirection: 'row', gap: 10 },
+  marksButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

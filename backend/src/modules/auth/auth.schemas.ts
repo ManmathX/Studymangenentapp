@@ -38,6 +38,19 @@ export const changePasswordBodySchema = z
   })
   .openapi('ChangePasswordRequest');
 
+export const forgotPasswordBodySchema = z.strictObject({ email }).openapi('ForgotPasswordRequest');
+
+export const resetPasswordBodySchema = z
+  .strictObject({
+    email,
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, 'Enter the 6-digit code from the email'),
+    newPassword: password,
+  })
+  .openapi('ResetPasswordRequest');
+
 export const deleteAccountBodySchema = z
   .strictObject({
     password: z
@@ -81,10 +94,10 @@ export const tokenPairSchema = z
   .openapi('TokenPair');
 
 export const sessionSchema = z
-  .object({ user: userSchema, tokens: tokenPairSchema, onboarded: z.boolean() })
+  .object({ user: userSchema, tokens: tokenPairSchema })
   .openapi('Session');
 
-export const meSchema = z.object({ user: userSchema, onboarded: z.boolean() }).openapi('Me');
+export const meSchema = z.object({ user: userSchema }).openapi('Me');
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;

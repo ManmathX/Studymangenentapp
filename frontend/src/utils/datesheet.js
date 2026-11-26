@@ -60,9 +60,17 @@ export function paperName(series, subjectName) {
   return `${series}: ${subjectName}`.slice(0, MAX_NAME);
 }
 
+const TERM_TYPES = ['halfYearly', 'final'];
+
+/** The exam a paper belongs to: saved papers carry `seriesName`, setup drafts carry `series`. */
+export const seriesOf = (exam) => exam.seriesName ?? exam.series ?? null;
+
+/** A paper's kind; half-yearly and final papers added from the exam form have only a `type`. */
+export const kindOfExam = (exam) => exam.kind ?? (TERM_TYPES.includes(exam.type) ? exam.type : null);
+
 /** Which section a test belongs to. Tests added one at a time (no kind) go under "Other exams". */
 export function sectionOf(exam) {
-  return DATESHEET_SECTIONS.find((section) => section.kinds.includes(exam.kind))?.value ?? 'other';
+  return DATESHEET_SECTIONS.find((section) => section.kinds.includes(kindOfExam(exam)))?.value ?? 'other';
 }
 
 const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
@@ -74,9 +82,10 @@ const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 export function groupDatesheet(exams) {
   const groups = new Map();
   for (const exam of [...exams].sort(byDate)) {
-    const title = exam.series || OTHER_TESTS;
-    if (!groups.has(title)) groups.set(title, { title, series: exam.series || null, kind: exam.kind ?? null, exams: [] });
-    groups.get(title).exams.push(exam);
+    const series = seriesOf(exam);
+    const key = exam.seriesId ?? series ?? OTHER_TESTS;
+    if (!groups.has(key)) groups.set(key, { title: series || OTHER_TESTS, series: series || null, kind: kindOfExam(exam), exams: [] });
+    groups.get(key).exams.push(exam);
   }
   return [...groups.values()].map((group) => ({
     ...group,

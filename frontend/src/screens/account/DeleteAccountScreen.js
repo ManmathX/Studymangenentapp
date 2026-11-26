@@ -8,7 +8,12 @@ import { toast } from '../../store/toastStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { applyServerErrors, rules } from '../../utils/validation';
 
-const WHAT_GOES = ['Your login and email address', 'Your plan, tasks, homework and tests', 'Your streak, focus sessions and check-ins', 'Your sharing and privacy settings'];
+const WHAT_GOES = [
+  'Your login and email address, from our server',
+  'Your plan, tasks, homework and tests, from this phone',
+  'Your streak, focus sessions and check-ins, from this phone',
+  'Your sharing and privacy settings, from this phone',
+];
 
 export function DeleteAccountScreen() {
   const { colors } = useTheme();
@@ -43,7 +48,7 @@ export function DeleteAccountScreen() {
             </Text>
           ))}
         </Card>
-        <Muted small>Only want a fresh plan? Use “Start over with setup” instead. It keeps your login.</Muted>
+        <Muted small>Only want a fresh plan? Use “Start over with setup” instead. It keeps your login. Want to keep your plan? Save a backup in Settings first.</Muted>
         {hasPassword ? (
           <FormField control={control} name="password" rules={rules.loginPassword} label="Type your password to confirm" secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={onSubmit} />
         ) : (

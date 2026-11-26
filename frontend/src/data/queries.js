@@ -1,8 +1,27 @@
 import { localNow } from './core/dates';
 import { startDay } from './core/engine';
+import { SUBJECTS } from './core/syllabus';
 import { clock } from './clock';
 import { nextSeq } from './db';
 import { notFound } from './errors';
+
+/* ---------- Subjects ---------- */
+
+const FALLBACK_COLOR = '#8E8E93';
+
+/**
+ * Name and colour of every subject the student takes, in order. Each board has its own
+ * subjects and students can add their own, so these are saved with the profile. A plan
+ * saved before that only has subject ids, so the built-in CBSE names fill in.
+ */
+export function subjectInfoOf(profile) {
+  if (Array.isArray(profile.subjectInfo)) return profile.subjectInfo;
+  return profile.subjects.map((id) => ({ id, name: SUBJECTS[id]?.name ?? id, color: SUBJECTS[id]?.color ?? FALLBACK_COLOR, custom: false }));
+}
+
+export function subjectName(profile, id) {
+  return subjectInfoOf(profile).find((subject) => subject.id === id)?.name ?? SUBJECTS[id]?.name ?? id;
+}
 
 /* ---------- The student's day ---------- */
 

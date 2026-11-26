@@ -10,10 +10,8 @@ import { buildContainer, type ContainerOptions } from '../../src/container.js';
 import { connectMongo, disconnectMongo } from '../../src/database/mongoose.js';
 import type { PasswordHasher } from '../../src/modules/auth/password.service.js';
 
-/** Wednesday 18 Nov 2026, 11:30 in Asia/Kolkata: before the 19:00 cut-off, so "start" is today. */
+/** A fixed "now" so token expiry and audit times are predictable. */
 export const NOW = new Date('2026-11-18T06:00:00.000Z');
-export const TODAY = '2026-11-18';
-export const TIMEZONE = 'Asia/Kolkata';
 export const PASSWORD = 'correct-horse-9';
 
 /** Argon2 is exercised in its own unit test; integration tests use a fast stand-in. */
@@ -51,7 +49,7 @@ function uriWithDatabase(uri: string, database: string): string {
 export function useTestApp(
   name: string,
   configOverrides: Record<string, string> = {},
-  containerOverrides: Partial<Pick<ContainerOptions, 'googleVerifier'>> = {},
+  containerOverrides: Partial<Pick<ContainerOptions, 'googleVerifier' | 'mailer'>> = {},
 ): TestApp {
   const holder = {} as TestApp;
   const config = testConfig(configOverrides);
@@ -110,37 +108,6 @@ export async function register(app: Express, name = 'Asha'): Promise<Session & {
     tokens: { accessToken: string; refreshToken: string };
   };
   return { email, userId: data.user.id, ...data.tokens };
-}
-
-export const ONBOARDING = {
-  cls: 9,
-  subjects: ['maths', 'science', 'sst', 'english', 'hindi'],
-  taughtChapterKeys: ['maths-1', 'maths-2', 'science-1'],
-  exams: [
-    {
-      subject: 'maths',
-      name: 'Periodic test 2',
-      date: '2026-11-28',
-      weight: 20,
-      chapterKeys: ['maths-1', 'maths-2', 'maths-3'],
-    },
-  ],
-  schoolStart: '07:45',
-  schoolEnd: '13:45',
-  tuitionDays: [1, 3, 5],
-  dailyLimitMins: 180,
-  timezone: TIMEZONE,
-};
-
-/** A registered student who has finished setup with one upcoming maths test. */
-export async function onboardedStudent(app: Express): Promise<Session & { email: string }> {
-  const session = await register(app);
-  await request(app)
-    .post('/api/v1/onboarding')
-    .set('Authorization', `Bearer ${session.accessToken}`)
-    .send(ONBOARDING)
-    .expect(201);
-  return session;
 }
 
 /** Supertest bound to one user's access token. */

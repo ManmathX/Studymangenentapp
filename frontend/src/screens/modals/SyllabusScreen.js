@@ -1,11 +1,15 @@
 import { memo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusDot } from '../../components/domain/Badges';
+import { Button } from '../../components/ui/Button';
 import { Chip, ChipGroup } from '../../components/ui/Controls';
+import { Input } from '../../components/ui/Field';
 import { Icon } from '../../components/ui/Icon';
 import { Card, Divider, Muted, Screen } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
+import { profileActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useSubjectInfo } from '../../store/subjectStore';
 import { chapterStatus } from '../../theme/tokens';
@@ -46,7 +50,47 @@ function SyllabusBody({ profile, navigation }) {
       <Muted small>
         Class {profile.cls} {profile.boardName ?? profile.board}. Pick a chapter to schedule it.
       </Muted>
+      <AddSubject onAdded={setSubject} />
     </>
+  );
+}
+
+/** A subject the student studies but didn't add at setup, with its own chapter list. */
+function AddSubject({ onAdded }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [chapterText, setChapterText] = useState('');
+  const chapters = chapterText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const add = useAsyncAction(async () => {
+    const added = await profileActions.addSubject({ name, chapters });
+    if (!added) return;
+    setOpen(false);
+    setName('');
+    setChapterText('');
+    onAdded(added.id);
+  });
+
+  if (!open) return <Button title="Add a subject" icon="plus" onPress={() => setOpen(true)} testID="add-subject" />;
+  return (
+    <Card style={styles.form}>
+      <Input label="Subject name" value={name} onChangeText={setName} placeholder="e.g. Sanskrit" maxLength={40} testID="new-subject-name" />
+      <Input
+        label={`Chapters, one per line (${chapters.length})`}
+        value={chapterText}
+        onChangeText={setChapterText}
+        placeholder={'Sandhi\nSamasa\nKaraka'}
+        multiline
+        style={styles.chapters}
+        testID="new-subject-chapters"
+      />
+      <View style={styles.buttons}>
+        <Button title="Add subject" variant="primary" size="sm" onPress={add.execute} loading={add.pending} testID="new-subject-save" />
+        <Button title="Cancel" size="sm" variant="ghost" onPress={() => setOpen(false)} disabled={add.pending} />
+      </View>
+    </Card>
   );
 }
 
@@ -69,4 +113,7 @@ const ChapterRow = memo(function ChapterRow({ chapter, onPress }) {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, minHeight: 46 },
   name: { flex: 1, fontSize: 16 },
+  form: { gap: 12 },
+  chapters: { minHeight: 120 },
+  buttons: { flexDirection: 'row', gap: 8 },
 });

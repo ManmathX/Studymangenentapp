@@ -1,6 +1,7 @@
 /**
  * End-to-end smoke check against a running API: `npm run smoke` (API_URL defaults to localhost:4000).
- * Creates a throwaway account, exercises the main flows and token rotation, and exits non-zero on failure.
+ * Creates a throwaway account, checks sign-in, the syllabus catalogue, token rotation and account
+ * deletion, confirms no planner endpoints exist, and exits non-zero on failure.
  */
 const base = `${process.env.API_URL ?? 'http://localhost:4000'}/api/v1`;
 
@@ -50,65 +51,39 @@ async function main(): Promise<void> {
 
   const me = await call('GET', '/auth/me', undefined, token);
   check(
-    'me before setup says not onboarded',
-    (me.json.data as { onboarded: boolean }).onboarded === false,
+    'me returns only the login',
+    JSON.stringify(Object.keys(me.json.data as object)) === '["user"]',
   );
 
-  const notReady = await call('GET', '/dashboard/today', undefined, token);
-  check(
-    'dashboard needs onboarding first',
-    notReady.json.error?.code === 'ONBOARDING_REQUIRED',
-    notReady.json.error?.code,
-  );
-
-  const demo = await call('POST', '/onboarding/demo', { timezone: 'Asia/Kolkata' }, token);
-  check('demo student loads', demo.status === 201, String(demo.status));
-
+  // The app downloads the board's syllabus at setup; everything else stays on the phone.
   for (const path of [
-    '/dashboard/today',
-    '/dashboard/progress',
-    '/dashboard/habits',
-    '/dashboard/sharing',
-    '/plan/days',
-    '/exams',
-    '/homework?status=open',
-    '/homework/summary',
-    '/bag',
-    '/chapters?subject=maths',
+    '/syllabus/boards',
+    '/syllabus/classes?board=cbse',
+    '/syllabus/9?board=cbse',
   ]) {
     const result = await call('GET', path, undefined, token);
     check(`GET ${path}`, result.status === 200, String(result.status));
   }
+  for (const [method, path] of [
+    ['POST', '/onboarding'],
+    ['GET', '/profile'],
+    ['GET', '/dashboard/today'],
+    ['POST', '/homework'],
+  ] as const) {
+    const result = await call(method, path, method === 'POST' ? {} : undefined, token);
+    check(
+      `${method} ${path} is gone (plans live on the phone)`,
+      result.status === 404,
+      String(result.status),
+    );
+  }
 
-  const today = (await call('GET', '/dashboard/today', undefined, token)).json.data as {
-    today: string;
-    tasks: unknown[];
-    streak: number;
-    suggestions: { id: string; kind: string }[];
-  };
+  const forgot = await call('POST', '/auth/password/forgot', { email });
   check(
-    'today has tasks, streak and a missed-task suggestion',
-    today.tasks.length > 0 &&
-      today.streak > 0 &&
-      today.suggestions.some((item) => item.kind === 'move'),
-    `tasks=${today.tasks.length} streak=${today.streak} suggestions=${today.suggestions.length}`,
+    'forgot password answers (204 with SMTP_URL set, 503 without)',
+    forgot.status === 204 || forgot.status === 503,
+    String(forgot.status),
   );
-
-  const day = await call('GET', `/plan/days/${today.today}`, undefined, token);
-  check('plan day lays out a timeline', Array.isArray((day.json.data as { rows: unknown[] }).rows));
-
-  const auto = await call('POST', '/plan/auto-schedule', undefined, token);
-  check('auto-schedule suggests blocks', auto.status === 200, JSON.stringify(auto.json.data));
-
-  const proposal = await call('GET', '/chapters/maths-9/schedule-proposal', undefined, token);
-  const steps = (proposal.json.data as { steps: { index: number; proposedDate: string }[] }).steps;
-  const scheduled = await call(
-    'POST',
-    '/chapters/maths-9/schedule',
-    { steps: steps.map(({ index, proposedDate }) => ({ index, date: proposedDate })) },
-    token,
-  );
-  check('schedule chapter steps', scheduled.status === 201, `${steps.length} steps`);
 
   const injection = await call('POST', '/auth/login', { email: { $gt: '' }, password: 'x' });
   check('NoSQL operator in login is rejected', injection.status === 400, String(injection.status));
@@ -122,20 +97,6 @@ async function main(): Promise<void> {
   check('refresh rotates the token', rotated.status === 200, String(rotated.status));
   const reused = await call('POST', '/auth/refresh', { refreshToken: session.tokens.refreshToken });
   check('reusing a rotated refresh token fails', reused.status === 401, reused.json.error?.code);
-
-  const homework = await call(
-    'POST',
-    '/homework',
-    { subject: 'maths', title: 'Smoke homework', due: today.today, mins: 20, difficulty: 1 },
-    token,
-  );
-  check('add homework', homework.status === 201, String(homework.status));
-  const homeworkId = (homework.json.data as { homework: { id: string } }).homework.id;
-  const removed = await call('DELETE', `/homework/${homeworkId}`, undefined, token);
-  check('delete homework', removed.status === 204, String(removed.status));
-
-  const wipe = await call('DELETE', '/profile/data', undefined, token);
-  check('start over wipes planner data', wipe.status === 204, String(wipe.status));
 
   const changed = await call(
     'POST',

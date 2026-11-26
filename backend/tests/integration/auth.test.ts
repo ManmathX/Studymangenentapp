@@ -2,14 +2,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import {
-  as,
-  onboardedStudent,
-  PASSWORD,
-  register,
-  testConfig,
-  useTestApp,
-} from '../helpers/app.js';
+import { as, PASSWORD, register, testConfig, useTestApp } from '../helpers/app.js';
 
 const ctx = useTestApp('auth');
 
@@ -24,10 +17,10 @@ describe('registration', () => {
       .post('/api/v1/auth/register')
       .send({ name: '  Asha ', email: 'Asha@Example.TEST', password: PASSWORD })
       .expect(201);
-    const { user, tokens, onboarded } = response.body.data;
+    const { user, tokens } = response.body.data;
+    expect(Object.keys(response.body.data).sort()).toEqual(['tokens', 'user']);
     expect(user).toMatchObject({ name: 'Asha', email: 'asha@example.test', role: 'student' });
     expect(tokens).toMatchObject({ tokenType: 'Bearer', expiresIn: 900 });
-    expect(onboarded).toBe(false);
     expect(JSON.stringify(response.body)).not.toContain('passwordHash');
   });
 
@@ -120,13 +113,60 @@ describe('sign-in and sessions', () => {
       .expect(401);
   });
 
-  it('reports onboarding state on /me', async () => {
-    const fresh = await register(ctx.app);
-    const me = await as(ctx.app, fresh.accessToken).get('/auth/me').expect(200);
-    expect(me.body.data.onboarded).toBe(false);
-    const done = await onboardedStudent(ctx.app);
-    const meAfter = await as(ctx.app, done.accessToken).get('/auth/me').expect(200);
-    expect(meAfter.body.data.onboarded).toBe(true);
+  it('returns only the login on /me', async () => {
+    const session = await register(ctx.app);
+    const me = await as(ctx.app, session.accessToken).get('/auth/me').expect(200);
+    expect(Object.keys(me.body.data)).toEqual(['user']);
+    expect(me.body.data.user).toMatchObject({ id: session.userId, name: 'Asha' });
+  });
+});
+
+describe('forgot password without an email server', () => {
+  it('says password reset is not set up', async () => {
+    const { email } = await register(ctx.app);
+    const response = await request(ctx.app)
+      .post('/api/v1/auth/password/forgot')
+      .send({ email })
+      .expect(503);
+    expect(response.body.error.code).toBe('PASSWORD_RESET_UNAVAILABLE');
+  });
+});
+
+describe('student data stays on the phone', () => {
+  it('has no database model for anything but logins, sessions, reset codes, the audit log and the syllabus', () => {
+    expect(mongoose.modelNames().sort()).toEqual([
+      'AuditLog',
+      'Board',
+      'CatalogSubject',
+      'PasswordReset',
+      'RefreshToken',
+      'User',
+    ]);
+  });
+
+  it('has no endpoints that take or return a student’s plan', async () => {
+    const user = as(ctx.app, (await register(ctx.app)).accessToken);
+    const gone: [string, string][] = [
+      ['post', '/onboarding'],
+      ['get', '/profile'],
+      ['delete', '/profile/data'],
+      ['get', '/dashboard/today'],
+      ['get', '/plan/days'],
+      ['get', '/chapters'],
+      ['get', '/exams'],
+      ['post', '/exams'],
+      ['get', '/homework'],
+      ['post', '/focus-sessions'],
+      ['get', '/bag'],
+    ];
+    for (const [method, path] of gone) {
+      const response = await (method === 'get'
+        ? user.get(path)
+        : method === 'post'
+          ? user.post(path, {})
+          : user.delete(path));
+      expect({ method, path, status: response.status }).toEqual({ method, path, status: 404 });
+    }
   });
 });
 
@@ -213,37 +253,18 @@ describe('delete account', () => {
     expect(response.body.error.code).toBe('WRONG_PASSWORD');
   });
 
-  it('removes the login, sessions and every planner record', async () => {
-    const session = await onboardedStudent(ctx.app);
-    const user = as(ctx.app, session.accessToken);
-    await user
-      .post('/homework', {
-        subject: 'maths',
-        title: 'Ex 1.1',
-        due: '2026-11-20',
-        mins: 30,
-        difficulty: 2,
-      })
-      .expect(201);
-    await user.post('/focus-sessions', { subject: 'maths', mins: 25 }).expect(201);
+  it('removes the login and every session', async () => {
+    const session = await register(ctx.app);
+    await login(session.email).expect(200);
 
-    await user.delete('/auth/account', { password: PASSWORD }).expect(204);
+    await as(ctx.app, session.accessToken)
+      .delete('/auth/account', { password: PASSWORD })
+      .expect(204);
 
     await login(session.email).expect(401);
     await refresh(session.refreshToken).expect(401);
     const owner = new mongoose.Types.ObjectId(session.userId);
-    for (const name of [
-      'users',
-      'refreshtokens',
-      'profiles',
-      'chapters',
-      'exams',
-      'tasks',
-      'homework',
-      'focussessions',
-      'dailylogs',
-      'suggestions',
-    ]) {
+    for (const name of ['users', 'refreshtokens']) {
       const filter = name === 'users' ? { _id: owner } : { userId: owner };
       const count = await mongoose.connection.collection(name).countDocuments(filter);
       expect({ name, count }).toEqual({ name, count: 0 });

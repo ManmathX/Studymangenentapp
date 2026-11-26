@@ -1,6 +1,6 @@
 /**
- * Static reference data: CBSE subjects, NCERT chapters with difficulty (1 easy … 3 hard),
- * a weekly school timetable and bag items. Ported from the product prototype.
+ * The NCERT chapters (difficulty 1 easy … 3 hard) that seed a fresh syllabus catalogue as
+ * CBSE Class 9 and 10. Students' own subjects and plans live on their phones, not here.
  */
 export const SUBJECT_IDS = ['maths', 'science', 'sst', 'english', 'hindi'] as const;
 export type BuiltInSubjectId = (typeof SUBJECT_IDS)[number];
@@ -8,34 +8,17 @@ export type BuiltInSubjectId = (typeof SUBJECT_IDS)[number];
 /**
  * Subject ids are short lowercase slugs. Admins define them per board and class in the
  * syllabus catalogue (`maths`, `physics`, `odia`…). Students can also add subjects the
- * catalogue lacks during setup; those get the reserved ids `custom1` … `custom6` and keep
- * their own chapter list on the student's chapters.
+ * catalogue lacks during setup; the app gives those the ids `custom1` … `custom6` and keeps
+ * them on the phone, so catalogue subjects may not use those ids.
  */
-export type SubjectId = string;
-export const MAX_CUSTOM_SUBJECTS = 6;
 export const SUBJECT_ID_PATTERN = /^[a-z][a-z0-9]{1,23}$/;
-export const CUSTOM_SUBJECT_ID_PATTERN = new RegExp(`^custom[1-${MAX_CUSTOM_SUBJECTS}]$`);
-/** Catalogue subjects may not use the `custom<n>` ids kept for student-added subjects. */
 export const RESERVED_SUBJECT_ID_PATTERN = /^custom\d*$/;
-/** Chapters are keyed `<subject>-<n>`, 1-based, e.g. `maths-3` or `custom1-12`. */
-export const CHAPTER_KEY_PATTERN = /^[a-z][a-z0-9]{1,23}-\d{1,2}$/;
 export const MAX_CHAPTERS_PER_SUBJECT = 60;
 
 export interface SubjectInfo {
-  id: SubjectId;
+  id: string;
   name: string;
   color: string;
-}
-
-export function isBuiltInSubject(id: string): id is BuiltInSubjectId {
-  return (SUBJECT_IDS as readonly string[]).includes(id);
-}
-
-/** Display name for a subject: the student's own copy first, then the built-in name. */
-export function subjectName(id: SubjectId, known: readonly SubjectInfo[] = []): string {
-  const own = known.find((subject) => subject.id === id);
-  if (own) return own.name;
-  return isBuiltInSubject(id) ? SUBJECTS[id].name : 'Other subject';
 }
 
 export const SUBJECTS: Record<BuiltInSubjectId, SubjectInfo> = {
@@ -199,70 +182,3 @@ export const SYLLABUS: Record<SupportedClass, Record<BuiltInSubjectId, ChapterLi
     ],
   },
 };
-
-export type PeriodId = BuiltInSubjectId | 'lab' | 'pe' | 'computer' | 'art' | 'library';
-
-/** Periods per weekday (1 = Monday … 6 = Saturday). Sunday has no school. */
-export const TIMETABLE: Record<number, readonly PeriodId[]> = {
-  1: ['english', 'maths', 'science', 'hindi', 'sst', 'maths', 'pe', 'computer'],
-  2: ['maths', 'science', 'english', 'sst', 'hindi', 'lab', 'lab', 'art'],
-  3: ['science', 'maths', 'hindi', 'english', 'sst', 'maths', 'library', 'pe'],
-  4: ['maths', 'english', 'science', 'sst', 'hindi', 'computer', 'lab', 'lab'],
-  5: ['hindi', 'maths', 'science', 'english', 'sst', 'maths', 'art', 'pe'],
-  6: ['maths', 'science', 'english', 'sst', 'hindi'],
-};
-
-export const PERIOD_LABELS: Record<Exclude<PeriodId, BuiltInSubjectId>, string> = {
-  lab: 'Science lab',
-  pe: 'PE',
-  computer: 'Computer',
-  art: 'Art',
-  library: 'Library',
-};
-
-export const BAG_EXTRAS: Record<Exclude<PeriodId, BuiltInSubjectId>, string> = {
-  lab: 'Lab coat and practical file',
-  pe: 'PE shoes and house T-shirt',
-  computer: 'Computer notebook',
-  art: 'Sketchbook and colours',
-  library: 'Library book to return',
-};
-
-export const ROUTINES = {
-  morning: ['Look at today’s plan', 'Pack the bag from the checklist', 'Do one revision nudge'],
-  evening: [
-    'Tick off what you finished',
-    'Move anything that slipped',
-    'Pick tomorrow’s first task',
-  ],
-} as const;
-
-export function isSupportedClass(value: number): value is SupportedClass {
-  return (SUPPORTED_CLASSES as readonly number[]).includes(value);
-}
-
-export function isSubjectPeriod(period: PeriodId): period is BuiltInSubjectId {
-  return isBuiltInSubject(period);
-}
-
-export interface CatalogChapter {
-  key: string;
-  subject: SubjectId;
-  name: string;
-  difficulty: 1 | 2 | 3;
-}
-
-/** Chapters for one class, keyed `<subject>-<n>` (1-based) like the prototype. */
-export function catalogChapters(
-  cls: SupportedClass,
-  subjects: readonly BuiltInSubjectId[] = SUBJECT_IDS,
-): CatalogChapter[] {
-  return subjects.flatMap((subject) =>
-    SYLLABUS[cls][subject].map(([name, difficulty], index) => ({
-      key: `${subject}-${index + 1}`,
-      subject,
-      name,
-      difficulty,
-    })),
-  );
-}

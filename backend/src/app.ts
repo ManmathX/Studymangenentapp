@@ -1,7 +1,7 @@
 import compression from 'compression';
 import cors from 'cors';
-import express, { type Express } from 'express';
-import helmet from 'helmet';
+import express, { type Express, type RequestHandler } from 'express';
+import helmetImport, { type HelmetOptions } from 'helmet';
 import { pinoHttp } from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import type { Container } from './container.js';
@@ -12,6 +12,15 @@ import { requestId } from './common/middleware/request-id.js';
 import { buildOpenApiDocument } from './docs/openapi.js';
 
 export const API_PREFIX = '/api/v1';
+
+/**
+ * helmet ships separate ESM and CommonJS type files. Vercel's type checker reads the CommonJS one,
+ * where the default import is typed as the whole module object, so take `.default` when present.
+ * At runtime Node hands us the helmet function either way.
+ */
+const helmet = ((helmetImport as unknown as { default?: unknown }).default ?? helmetImport) as (
+  options?: Readonly<HelmetOptions>,
+) => RequestHandler;
 
 export function createApp(config: AppConfig, logger: Logger, container: Container): Express {
   const app = express();
@@ -39,7 +48,10 @@ export function createApp(config: AppConfig, logger: Logger, container: Containe
   app.use(helmet());
   app.use(
     cors({
-      origin: (origin, callback) => callback(null, !origin || config.CORS_ORIGINS.includes(origin)),
+      // "*" allows any web origin. Safe because auth uses Bearer tokens, never cookies.
+      origin: config.CORS_ORIGINS.includes('*')
+        ? '*'
+        : (origin, callback) => callback(null, !origin || config.CORS_ORIGINS.includes(origin)),
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-Id'],
       exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy'],

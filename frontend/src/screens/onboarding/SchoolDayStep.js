@@ -1,46 +1,32 @@
 import { Text } from 'react-native';
 import { useState } from 'react';
+import { SchoolDayFields } from '../../components/domain/SchoolDayFields';
 import { Button } from '../../components/ui/Button';
-import { Chip, ChipGroup, SegmentedControl, Stepper } from '../../components/ui/Controls';
-import { Card, Divider, Muted } from '../../components/ui/Layout';
+import { SegmentedControl } from '../../components/ui/Controls';
+import { Muted } from '../../components/ui/Layout';
+import { profileApi } from '../../data/api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
-import { profileApi } from '../../services/api/endpoints';
 import { useAuthStore } from '../../store/authStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { setKnownSubjects } from '../../store/subjectStore';
 import { toast } from '../../store/toastStore';
 import { useTheme } from '../../theme/ThemeProvider';
-import { deviceTimeZone, minutesToTime, timeToMinutes } from '../../utils/format';
+import { schoolDayProblem, tuitionsFromForm } from '../../utils/tuitions';
 import { FieldHeading, StepLayout } from './StepLayout';
 import { useDraftSubjects } from './useDraftSubjects';
-
-const WEEKDAYS = [
-  { day: 1, label: 'Mon' },
-  { day: 2, label: 'Tue' },
-  { day: 3, label: 'Wed' },
-  { day: 4, label: 'Thu' },
-  { day: 5, label: 'Fri' },
-  { day: 6, label: 'Sat' },
-];
 
 export function SchoolDayStep() {
   const { colors } = useTheme();
   const { draft, syllabus, chosen } = useDraftSubjects();
   const update = useOnboardingStore((state) => state.update);
-  const toggleTuition = useOnboardingStore((state) => state.toggleTuition);
   const resetDraft = useOnboardingStore((state) => state.reset);
-  const setOnboarded = useAuthStore((state) => state.setOnboarded);
+  const name = useAuthStore((state) => state.user?.name);
+  const plannerChanged = useAuthStore((state) => state.plannerChanged);
   const [error, setError] = useState(null);
 
-  const shift = (field, delta) => update({ [field]: minutesToTime(timeToMinutes(draft[field]) + delta) });
-
   const build = useAsyncAction(async () => {
-    if (timeToMinutes(draft.schoolEnd) <= timeToMinutes(draft.schoolStart)) {
-      setError('School has to end after it starts.');
-      return;
-    }
-    if (draft.tuitionDays.length && timeToMinutes(draft.tuitionEnd) <= timeToMinutes(draft.tuitionStart)) {
-      setError('Tuition has to end after it starts.');
+    const problem = schoolDayProblem(draft);
+    if (problem) {
+      setError(problem);
       return;
     }
     if (!syllabus.data) {
@@ -50,25 +36,25 @@ export function SchoolDayStep() {
     setError(null);
     const subjects = chosen.map((subject) => subject.id);
     try {
+      // The board's syllabus came from the server; the student's copy is saved only on this phone.
       const result = await profileApi.onboard({
+        name,
         board: draft.board,
+        boardName: draft.boardName,
         cls: draft.cls,
+        catalog: syllabus.data,
         subjects,
         customSubjects: draft.customSubjects.map(({ id, name, color, chapters }) => ({ id, name, color, chapters })),
         taughtChapterKeys: Object.keys(draft.taught).filter((key) => draft.taught[key] && subjects.some((subject) => key.startsWith(`${subject}-`))),
         exams: draft.exams.filter((exam) => subjects.includes(exam.subject)).map(({ id: _id, ...exam }) => exam),
         schoolStart: draft.schoolStart,
         schoolEnd: draft.schoolEnd,
-        tuitionDays: draft.tuitionDays,
-        tuitionStart: draft.tuitionStart,
-        tuitionEnd: draft.tuitionEnd,
+        tuitions: tuitionsFromForm(draft.tuitions),
         dailyLimitMins: draft.dailyLimitMins,
-        timezone: deviceTimeZone(),
       });
-      setKnownSubjects(result.profile.subjectInfo);
       resetDraft();
-      setOnboarded(true);
-      toast(result.suggested ? `Plan ready. ${result.suggested} study blocks suggested before your tests.` : 'Plan ready. Tap "Schedule from syllabus" in Plan to add your first chapter.');
+      plannerChanged();
+      toast(result.planned ? `Plan ready. ${result.planned} study slots added before your tests.` : 'Plan ready. Tap "Schedule from syllabus" in Plan to add your first chapter.');
     } catch (caught) {
       setError(caught.message);
     }
@@ -78,27 +64,11 @@ export function SchoolDayStep() {
     <StepLayout
       step={5}
       title="Your school day"
-      lead="The planner only uses time after school, tuition and dinner."
+      lead="Add your school hours and every tuition. The planner only uses the time around them."
       footer={<Button title="Build my plan" icon="spark" variant="primary" block onPress={build.execute} loading={build.pending} testID="build-plan" />}
     >
-      <Card flush>
-        <Stepper label="School starts" valueLabel={draft.schoolStart} onDecrement={() => shift('schoolStart', -15)} onIncrement={() => shift('schoolStart', 15)} />
-        <Divider />
-        <Stepper label="School ends" valueLabel={draft.schoolEnd} onDecrement={() => shift('schoolEnd', -15)} onIncrement={() => shift('schoolEnd', 15)} />
-      </Card>
-      <FieldHeading>Tuition days</FieldHeading>
-      <ChipGroup label="Tuition days">
-        {WEEKDAYS.map(({ day, label }) => (
-          <Chip key={day} label={label} selected={draft.tuitionDays.includes(day)} onPress={() => toggleTuition(day)} />
-        ))}
-      </ChipGroup>
-      {draft.tuitionDays.length ? (
-        <Card flush>
-          <Stepper label="Tuition starts" valueLabel={draft.tuitionStart} onDecrement={() => shift('tuitionStart', -15)} onIncrement={() => shift('tuitionStart', 15)} />
-          <Divider />
-          <Stepper label="Tuition ends" valueLabel={draft.tuitionEnd} onDecrement={() => shift('tuitionEnd', -15)} onIncrement={() => shift('tuitionEnd', 15)} />
-        </Card>
-      ) : null}
+      <SchoolDayFields value={draft} onChange={update} />
+      <Muted small>You can change these later in Settings.</Muted>
       <FieldHeading>Most study time on a school day</FieldHeading>
       <SegmentedControl
         label="Daily study limit"

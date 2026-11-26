@@ -1,14 +1,20 @@
+import { Platform } from 'react-native';
+import { backupApi, chaptersApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, tasksApi } from '../data/api';
+import { localToday } from '../data/queries';
 import { useAuthStore } from '../store/authStore';
 import { useResourceStore } from '../store/resourceStore';
+import { setKnownSubjects } from '../store/subjectStore';
 import { toast } from '../store/toastStore';
 import { dayName, duration } from '../utils/format';
-import { chaptersApi, examsApi, habitsApi, homeworkApi, planApi, profileApi, suggestionsApi, tasksApi } from './api/endpoints';
 import { chapterStatus } from '../theme/tokens';
 import { confirmAction } from '../utils/confirm';
+import { backupFileName, pickBackupFile, saveBackupFile } from './backupFile';
+import { shareText } from './share';
 
 /**
- * Every change the app can make. Each action calls the API, refreshes whatever is
- * on screen, and tells the student what happened. Returns the result, or null on failure.
+ * Every change the app can make to the planner on this phone. Each action saves the change,
+ * refreshes whatever is on screen, and tells the student what happened. Returns the result,
+ * or null on failure.
  */
 async function run(call, { success, invalidate = ['*'] } = {}) {
   try {
@@ -71,9 +77,19 @@ export const chapterActions = {
   snooze: (chapter) => run(() => chaptersApi.snooze(chapter.key), { success: 'We’ll remind you tomorrow.' }),
 };
 
+const slotsPlanned = (count) => (count ? ` ${count} study slot${count > 1 ? 's' : ''} planned before it.` : '');
+
 export const examActions = {
-  create: (body) => run(() => examsApi.create(body), { success: `${body.name} added.` }),
+  create: (body) => run(() => examsApi.create(body), { success: (result) => `${body.name} added.${slotsPlanned(result.planned.added)}` }),
+  /** Every paper of a half-yearly or final exam, with a mixed study timetable for all of them. */
+  createSeries: (body, label) =>
+    run(() => examsApi.createSeries(body), {
+      success: (result) =>
+        `${label} added: ${result.exams.length} paper${result.exams.length > 1 ? 's' : ''}, ${result.planned.added} study slot${result.planned.added === 1 ? '' : 's'} planned.`,
+    }),
   update: (id, changes) => run(() => examsApi.update(id, changes), { success: (exam) => `${exam.name} saved.` }),
+  setResult: (exam, result) =>
+    run(() => examsApi.setResult(exam.id, result), { success: result ? `Marks saved for ${exam.name}.` : `Marks removed from ${exam.name}.` }),
   async remove(exam) {
     const confirmed = await confirmAction({
       title: `Remove ${exam.name}?`,
@@ -86,7 +102,7 @@ export const examActions = {
   /** Adds every paper of one exam (UT 1, Half-yearly…) to the datesheet. */
   createDatesheet: (body) =>
     run(() => examsApi.createDatesheet(body), {
-      success: (papers) => `${body.series}: ${papers.length} paper${papers.length === 1 ? '' : 's'} on your datesheet. Tap "Fill free slots before exams" to plan revision.`,
+      success: (result) => `${body.series}: ${result.exams.length} paper${result.exams.length === 1 ? '' : 's'} on your datesheet.${slotsPlanned(result.planned.added)}`,
     }),
   /** Removes a whole exam (every paper of one datesheet group). */
   async removeGroup(group) {
@@ -126,14 +142,63 @@ export const habitActions = {
 
 export const profileActions = {
   update: (patch, message) => run(() => profileApi.update(patch), { success: message }),
-  async loadDemo(timezone) {
-    const result = await run(() => profileApi.loadDemo(timezone), { success: 'Demo student loaded: Class 9 CBSE.' });
-    if (result) useAuthStore.getState().setOnboarded(true);
+  async addSubject(body) {
+    const result = await run(() => profileApi.addSubject(body), {
+      success: (subject) => `${subject.name} added with ${subject.chapters} chapter${subject.chapters > 1 ? 's' : ''}.`,
+    });
+    // Every screen needs the new subject's name and colour.
+    if (result) setKnownSubjects((await profileApi.get()).subjectInfo);
+    return result;
+  },
+  async loadDemo() {
+    const name = useAuthStore.getState().user?.name;
+    const result = await run(() => profileApi.loadDemo(name), { success: 'Demo student loaded: Class 9 CBSE.' });
+    if (result) useAuthStore.getState().plannerChanged();
     return result;
   },
   async startOver() {
     const result = await run(profileApi.wipe, { success: 'Everything was cleared. Let’s set up again.' });
-    if (result) useAuthStore.getState().setOnboarded(false);
+    if (result) useAuthStore.getState().plannerChanged();
+    return result;
+  },
+};
+
+export const shareActions = {
+  /** Shares a message from this phone. `success` is shown only if it was actually sent. */
+  send: (message, success) => run(() => shareText(message), { success: (sent) => (sent ? success : null), invalidate: [] }),
+};
+
+export const backupActions = {
+  /** Hands the student a file with everything on this phone, to keep or move to a new phone. */
+  async save() {
+    return run(
+      async () => {
+        await saveBackupFile(await backupApi.export(), backupFileName(localToday().today));
+        return true;
+      },
+      { success: Platform.OS === 'web' ? 'Backup downloaded.' : null, invalidate: [] },
+    );
+  },
+  /** Replaces the plan on this phone with a backup file the student picks. */
+  async restore() {
+    let summary;
+    let text;
+    try {
+      text = await pickBackupFile();
+      if (text === null) return null;
+      summary = await backupApi.parse(text);
+    } catch (error) {
+      toast(error.message || 'That file couldn’t be opened.', 'error');
+      return null;
+    }
+    const confirmed = await confirmAction({
+      title: 'Restore this backup?',
+      message: `${summary.name ? `${summary.name}’s plan` : 'The plan in this backup'} replaces everything on this phone. This can’t be undone.`,
+      confirmLabel: 'Restore',
+    });
+    if (!confirmed) return null;
+    const result = await run(() => backupApi.restore(text), { success: 'Backup restored.' });
+    if (result) useAuthStore.getState().plannerChanged();
     return result;
   },
 };

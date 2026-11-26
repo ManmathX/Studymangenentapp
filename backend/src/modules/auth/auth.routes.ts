@@ -4,19 +4,23 @@ import type { AccountService } from './account.service.js';
 import {
   changePasswordBodySchema,
   deleteAccountBodySchema,
+  forgotPasswordBodySchema,
   googleLoginBodySchema,
   loginBodySchema,
   meSchema,
   refreshBodySchema,
   registerBodySchema,
+  resetPasswordBodySchema,
   sessionSchema,
   tokenPairSchema,
 } from './auth.schemas.js';
 import type { AuthService } from './auth.service.js';
+import type { PasswordResetService } from './password-reset.service.js';
 
 export function authRoutes(
   auth: AuthService,
   accounts: AccountService,
+  resets: PasswordResetService,
   authLimiter: RequestHandler,
 ): Route[] {
   const tags = ['Auth'];
@@ -84,7 +88,7 @@ export function authRoutes(
       method: 'get',
       path: '/auth/me',
       access: 'user',
-      summary: 'Current account and onboarding state',
+      summary: 'Current account',
       tags,
       response: meSchema,
       handler: ({ auth: who }) => auth.me(who.userId),
@@ -103,12 +107,38 @@ export function authRoutes(
       handler: ({ body, meta, auth: who }) => auth.changePassword(who.userId, body, meta),
     }),
     defineRoute({
+      method: 'post',
+      path: '/auth/password/forgot',
+      access: 'public',
+      summary: 'Email a 6-digit code for setting a new password',
+      description:
+        'Answers 204 whether or not the email has an account. A new code is sent at most once a minute. Returns 503 PASSWORD_RESET_UNAVAILABLE when the server has no SMTP_URL.',
+      tags,
+      status: 204,
+      middleware: [authLimiter],
+      body: forgotPasswordBodySchema,
+      handler: ({ body, meta }) => resets.requestCode(body.email, meta),
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/auth/password/reset',
+      access: 'public',
+      summary: 'Set a new password with the emailed code (signs out every device)',
+      description:
+        'A code works for PASSWORD_RESET_CODE_TTL_MINUTES and stops working after 5 wrong tries. Sign in with the new password afterwards.',
+      tags,
+      status: 204,
+      middleware: [authLimiter],
+      body: resetPasswordBodySchema,
+      handler: ({ body, meta }) => resets.resetPassword(body, meta),
+    }),
+    defineRoute({
       method: 'delete',
       path: '/auth/account',
       access: 'user',
-      summary: 'Permanently delete the account and all its data',
+      summary: 'Permanently delete the account',
       description:
-        'Needs the password. Removes the login, every planner record and every session. This cannot be undone.',
+        'Needs the password. Removes the login and every session. Students’ plans live on their phones; the app deletes those. This cannot be undone.',
       tags,
       status: 204,
       middleware: [authLimiter],

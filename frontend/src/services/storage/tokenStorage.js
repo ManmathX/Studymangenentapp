@@ -2,6 +2,8 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const REFRESH_KEY = 'studyplanner.refreshToken';
+/** The signed-in account (id, name, email…), so the plan on this phone opens offline too. */
+const ACCOUNT_KEY = 'studyplanner.account';
 
 /**
  * Refresh tokens live in the iOS Keychain / Android Keystore via expo-secure-store.
@@ -9,15 +11,15 @@ const REFRESH_KEY = 'studyplanner.refreshToken';
  * (cleared when the tab closes). Access tokens are only ever held in memory.
  */
 const webStore = {
-  get: async () => globalThis.sessionStorage?.getItem(REFRESH_KEY) ?? null,
-  set: async (value) => globalThis.sessionStorage?.setItem(REFRESH_KEY, value),
-  remove: async () => globalThis.sessionStorage?.removeItem(REFRESH_KEY),
+  get: async (key) => globalThis.sessionStorage?.getItem(key) ?? null,
+  set: async (key, value) => globalThis.sessionStorage?.setItem(key, value),
+  remove: async (key) => globalThis.sessionStorage?.removeItem(key),
 };
 
 const nativeStore = {
-  get: () => SecureStore.getItemAsync(REFRESH_KEY),
-  set: (value) => SecureStore.setItemAsync(REFRESH_KEY, value, { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }),
-  remove: () => SecureStore.deleteItemAsync(REFRESH_KEY),
+  get: (key) => SecureStore.getItemAsync(key),
+  set: (key, value) => SecureStore.setItemAsync(key, value, { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }),
+  remove: (key) => SecureStore.deleteItemAsync(key),
 };
 
 const store = Platform.OS === 'web' ? webStore : nativeStore;
@@ -29,13 +31,24 @@ export const tokenStorage = {
   setAccessToken: (token) => {
     accessToken = token;
   },
-  getRefreshToken: () => store.get(),
+  getRefreshToken: () => store.get(REFRESH_KEY),
   async saveTokens({ accessToken: access, refreshToken }) {
     accessToken = access;
-    await store.set(refreshToken);
+    await store.set(REFRESH_KEY, refreshToken);
+  },
+  async getAccount() {
+    try {
+      const account = JSON.parse((await store.get(ACCOUNT_KEY)) ?? 'null');
+      return account?.id ? account : null;
+    } catch {
+      return null;
+    }
+  },
+  async saveAccount({ id, name, email, role, hasPassword }) {
+    await store.set(ACCOUNT_KEY, JSON.stringify({ id, name, email, role, hasPassword }));
   },
   async clear() {
     accessToken = null;
-    await store.remove();
+    await Promise.all([store.remove(REFRESH_KEY), store.remove(ACCOUNT_KEY)]);
   },
 };

@@ -9,19 +9,21 @@ import {
   routineSlots,
   sortDayTasks,
   streak,
+  tuitionsOf,
 } from './core/engine';
-import { ROUTINES, SUBJECTS } from './core/syllabus';
+import { ROUTINES } from './core/syllabus';
 import { REVISION_INTERVALS } from './core/types';
 import { read, write } from './db';
 import { MAX_REST_DAYS_PER_WEEK } from './daily';
-import { copy, doneMinutesByDay, examsFrom, focusMinutesByDay, logFor, slippedTasks, studentDay, tasksInRange } from './queries';
-import { chaptersWithPlans, needsMoveSuggestions, refreshMissedTasks, suggestionsByState, upcomingExams } from './study';
+import { copy, doneMinutesByDay, examsFrom, focusMinutesByDay, logFor, slippedTasks, studentDay, subjectName, tasksInRange } from './queries';
+import { chaptersWithPlans, needsMoveSuggestions, recentResults, refreshMissedTasks, suggestionsByState, upcomingExams } from './study';
 
 /** Days of history used for the streak. Longer streaks show as this cap. */
 const STREAK_LOOKBACK_DAYS = 180;
 const HEAVY_DAY_LOOKAHEAD = 7;
 const SLIPPED_LOOKBACK_DAYS = 7;
 const DEFAULT_CHECKIN = { sleep: 8, breaks: 3, screen: '1 to 2 h', saved: false };
+const RECENT_MARKS_DAYS = 14;
 
 /** Study minutes per day (finished tasks plus focus sessions), rest days and the streak. */
 function loadActivity(data, ctx) {
@@ -102,12 +104,13 @@ export function progressDashboard() {
     coverage: coverage(chapters),
     subjects: profile.subjects.map((subject) => {
       const list = chapters.filter((chapter) => chapter.subject === subject);
-      return { subject, name: SUBJECTS[subject].name, coverage: coverage(list), chapters: list };
+      return { subject, name: subjectName(profile, subject), coverage: coverage(list), chapters: list };
     }),
     last7,
     weekMins: last7.reduce((sum, day) => sum + day.mins, 0),
     weeklyGoalMins: profile.weeklyGoalMins,
     upcomingExams: upcomingExams(data, today),
+    results: recentResults(data, today),
     slipped: slippedTasks(data, addDays(today, -SLIPPED_LOOKBACK_DAYS), today).map(copy),
   };
 }
@@ -160,9 +163,15 @@ export function sharingDashboard() {
     name: profile.name,
     cls: profile.cls,
     board: profile.board,
+    boardName: profile.boardName ?? profile.board,
     ageMode: profile.ageMode,
     examSeason: profile.examSeason,
     homeworkMins: profile.homeworkMins ?? DEFAULT_HOMEWORK_MINS,
+    schoolDay: {
+      schoolStart: profile.schoolStart,
+      schoolEnd: profile.schoolEnd,
+      tuitions: tuitionsOf(profile).map(({ name, days, start, end }) => ({ name, days: [...days], start, end })),
+    },
     todaySlots: routineSlots(profile, today, data.exams),
     sharing: copy(profile.sharing),
     preview: {
@@ -171,6 +180,11 @@ export function sharingDashboard() {
       streak: activity.streak,
       coveragePercent: coverage(data.chapters).percent,
       nextExam: nextExam ? { name: nextExam.name, date: nextExam.date } : null,
+      /** Marks from tests in the last two weeks, newest first. */
+      recentMarks: recentResults(data, today)
+        .filter((exam) => exam.result && exam.date >= addDays(today, -(RECENT_MARKS_DAYS - 1)))
+        .slice(0, 3)
+        .map(({ name, date, result }) => ({ name, date, ...result })),
     },
     later: suggestionsByState(data, ['later']),
   };

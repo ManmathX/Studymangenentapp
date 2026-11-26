@@ -10,7 +10,7 @@ import { localTodayKey, plural } from '../../utils/format';
 import { FieldHeading, StepLayout } from './StepLayout';
 import { useDraftSubjects } from './useDraftSubjects';
 
-/** Local ids for tests drafted during setup; the server assigns real ids on "Build my plan". */
+/** Temporary ids for tests drafted during setup; real ids are given on "Build my plan". */
 let draftSequence = 0;
 const nextDraftId = () => {
   draftSequence += 1;
