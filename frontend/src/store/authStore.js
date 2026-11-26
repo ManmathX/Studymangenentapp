@@ -7,6 +7,7 @@ import { authApi } from '../services/api/endpoints';
 import { signOutOfGoogle } from '../services/googleSignIn';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import { useResourceStore } from './resourceStore';
+import { useOnboardingStore } from './onboardingStore';
 import { setKnownSubjects } from './subjectStore';
 import { toast } from './toastStore';
 
@@ -72,21 +73,9 @@ export const useAuthStore = create((set, get) => ({
     set({ status: 'signedIn', user, onboarded });
   },
 
-  async login(credentials) {
-    const session = await authApi.login(credentials);
-    await tokenStorage.saveTokens(session.tokens);
-    await get().startSession(session.user);
-  },
-
   /** Signs in (or signs up) with an ID token from Google Sign-In. */
   async loginWithGoogle(idToken) {
     const session = await authApi.google(idToken);
-    await tokenStorage.saveTokens(session.tokens);
-    await get().startSession(session.user);
-  },
-
-  async register(details) {
-    const session = await authApi.register(details);
     await tokenStorage.saveTokens(session.tokens);
     await get().startSession(session.user);
   },
@@ -99,18 +88,6 @@ export const useAuthStore = create((set, get) => ({
     } finally {
       await get().clearSession();
     }
-  },
-
-  /** Sets a new password with the emailed code, then signs in with it. Throws ApiError for forms. */
-  async resetPassword({ email, code, newPassword }) {
-    await authApi.resetPassword({ email, code, newPassword });
-    await get().login({ email, password: newPassword });
-  },
-
-  /** Signs out every other device; this one keeps working with the new token pair. Throws ApiError for forms. */
-  async changePassword(currentPassword, newPassword) {
-    const tokens = await authApi.changePassword(currentPassword, newPassword);
-    await tokenStorage.saveTokens(tokens);
   },
 
   /** Deletes the login on the server and this account's plan on this phone. Google-only accounts send no password. */
@@ -134,6 +111,8 @@ export const useAuthStore = create((set, get) => ({
     await tokenStorage.clear();
     useResourceStore.getState().reset();
     setKnownSubjects([]);
+    // Half-finished setup answers (the name, subjects, tests) belong to the account signing out.
+    useOnboardingStore.getState().reset();
     signOutOfGoogle();
     set({ status: 'signedOut', user: null, onboarded: false });
   },

@@ -132,8 +132,8 @@ export const profileActions = {
     if (result) setKnownSubjects((await profileApi.get()).subjectInfo);
     return result;
   },
-  async loadDemo() {
-    const name = useAuthStore.getState().user?.name;
+  /** `name` is what the student typed at setup; defaults to their Google account name. */
+  async loadDemo(name = useAuthStore.getState().user?.name) {
     const result = await run(() => profileApi.loadDemo(name), { success: 'Demo student loaded: Class 9 CBSE.' });
     if (result) useAuthStore.getState().plannerChanged();
     return result;

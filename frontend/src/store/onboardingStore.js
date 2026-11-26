@@ -7,6 +7,8 @@ export const MAX_CUSTOM_CHAPTERS = 40;
 const CUSTOM_COLORS = ['#5AC8FA', '#FFCC00', '#5856D6', '#A2845E', '#30B0C7', '#FF6482'];
 
 const initialDraft = () => ({
+  /** What the student wants to be called. Starts as their Google name; they can change it. */
+  name: null,
   board: 'cbse',
   boardName: 'CBSE',
   cls: null,

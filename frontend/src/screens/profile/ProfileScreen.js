@@ -5,6 +5,7 @@ import { SchoolDayFields } from '../../components/domain/SchoolDayFields';
 import { SuggestionCard } from '../../components/domain/SuggestionCard';
 import { Button } from '../../components/ui/Button';
 import { CheckRow, SegmentedControl, ToggleRow } from '../../components/ui/Controls';
+import { Input } from '../../components/ui/Field';
 import { Icon } from '../../components/ui/Icon';
 import { Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
@@ -18,6 +19,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { HOMEWORK_SLOT_OPTIONS } from '../../data/core/engine';
 import { clockTime, duration, hours, initialOf, shortDate } from '../../utils/format';
 import { schoolDayProblem, tuitionsFromForm, tuitionsToForm } from '../../utils/tuitions';
+import { checkName, MAX_NAME_LENGTH } from '../../utils/validation';
 
 const SHARE_ITEMS = [
   ['hours', 'Study hours against the goal'],
@@ -54,12 +56,20 @@ export function ProfileScreen() {
 
 function ProfileCard({ data }) {
   const { colors } = useTheme();
+  const [editing, setEditing] = useState(false);
   return (
     <Card style={styles.profile}>
       <View style={[styles.avatar, { backgroundColor: colors.tint }]}>
         <Text style={styles.avatarText}>{initialOf(data.name)}</Text>
       </View>
-      <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }}>{data.name}</Text>
+      {editing ? (
+        <NameEditor current={data.name} onDone={() => setEditing(false)} />
+      ) : (
+        <>
+          <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }}>{data.name}</Text>
+          <Button title="Edit name" icon="pencil" size="sm" variant="ghost" onPress={() => setEditing(true)} testID="edit-name" />
+        </>
+      )}
       <Muted>
         Class {data.cls}, {data.boardName ?? data.board}
       </Muted>
@@ -92,6 +102,50 @@ function Stat({ value, unit, label }) {
     </View>
   );
 }
+
+/** Changes the name the planner uses for the student. Saved on this phone with the plan. */
+function NameEditor({ current, onDone }) {
+  const [name, setName] = useState(current ?? '');
+  const [error, setError] = useState(null);
+  const save = useAsyncAction(async () => {
+    const checked = checkName(name);
+    if (checked.error) {
+      setError(checked.error);
+      return;
+    }
+    if (checked.name === current) {
+      onDone();
+      return;
+    }
+    if (await profileActions.update({ name: checked.name }, 'Name saved.')) onDone();
+  });
+  return (
+    <View style={styles.nameEditor}>
+      <Input
+        value={name}
+        onChangeText={(text) => {
+          setError(null);
+          setName(text);
+        }}
+        placeholder="Your name"
+        accessibilityLabel="Your name"
+        maxLength={MAX_NAME_LENGTH}
+        autoCapitalize="words"
+        autoComplete="name"
+        autoFocus
+        onSubmitEditing={save.execute}
+        returnKeyType="done"
+        error={error}
+        testID="field-profile-name"
+      />
+      <View style={styles.nameButtons}>
+        <Button title="Save" variant="primary" size="sm" onPress={save.execute} loading={save.pending} testID="save-name" />
+        <Button title="Cancel" variant="ghost" size="sm" onPress={onDone} />
+      </View>
+    </View>
+  );
+}
+
 /** Saved school hours and tuitions as form values. */
 const toForm = (schoolDay) => ({
   schoolStart: clockTime(schoolDay.schoolStart),
@@ -309,7 +363,6 @@ function YourData() {
 function Account() {
   const navigation = useNavigation();
   const logout = useAuthStore((state) => state.logout);
-  const hasPassword = useAuthStore((state) => state.user?.hasPassword !== false);
   const [confirming, setConfirming] = useState(false);
   const signOut = useAsyncAction(logout);
   const startOver = useAsyncAction(async () => {
@@ -326,7 +379,6 @@ function Account() {
     >
       <View style={{ gap: 10 }}>
         <Button title="Sign out" icon="logout" onPress={signOut.execute} loading={signOut.pending} block />
-        {hasPassword ? <Button title="Change password" icon="key" onPress={() => navigation.navigate('ChangePassword')} block testID="open-change-password" /> : null}
         <Button title={confirming ? 'Tap again to delete everything' : 'Start over with setup'} variant="danger" onPress={startOver.execute} loading={startOver.pending} block testID="start-over" />
         <Button title="Delete account" icon="trash" variant="danger" onPress={() => navigation.navigate('DeleteAccount')} block testID="open-delete-account" />
       </View>
@@ -341,6 +393,8 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 8 },
   stats: { flexDirection: 'row', alignSelf: 'stretch', marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   stat: { flex: 1, alignItems: 'center', gap: 2 },
+  nameEditor: { alignSelf: 'stretch', gap: 8 },
+  nameButtons: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
   padded: { padding: 16, gap: 8 },
   row: { flexDirection: 'row', gap: 10 },

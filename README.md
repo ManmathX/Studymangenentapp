@@ -27,8 +27,8 @@ Navigation lives in `frontend/src/navigation/` (`MainTabs.js` for the tabs, `Sec
 
 | Area | What a student can do |
 | --- | --- |
-| Account | Sign in with Google (Android and iOS) or email, stay signed in (rotating refresh tokens), open the plan offline, change password, reset a forgotten password with an emailed code, sign out (the plan stays on the phone), delete the account (the login on the server and the plan on the phone) |
-| Setup | Pick board and class, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours, add each tuition with its own days and times (all changeable later in Profile), or load a demo student |
+| Account | Sign in (and sign up) with Google only, on Android, iOS and web; stay signed in (rotating refresh tokens), open the plan offline, sign out (the plan stays on the phone), delete the account (the login on the server and the plan on the phone). Email and password sign-in is only for admins, in the admin portal |
+| Setup | Write your name (filled in from Google, changeable later in Profile), pick board and class, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours, add each tuition with its own days and times (all changeable later in Profile), or load a demo student |
 | Datesheet | Add unit tests, periodic tests, the half-yearly or final, or any other exam as one group of papers, each with its own date and syllabus. Unit tests get two weeks of preparation per paper; half-yearly and final exams get one mixed timetable across subjects starting weeks earlier. Edit or remove a paper or a whole exam, see readiness, add marks after a test |
 | Plan | 14-day strip, a day laid out around school, tuition and dinner, heavy-day warnings with a suggested move, move tasks |
 | Syllabus | Schedule a chapter's study steps on chosen days, update chapter status, add a subject after setup (name and chapters) |
@@ -83,7 +83,8 @@ npm run dev
    - **iOS** (only for iOS builds): bundle id `com.studyplanner.app`.
 2. API: set `GOOGLE_CLIENT_IDS` to the web client ID (plus the iOS client ID if used). Without it, `POST /auth/google` answers 503.
 3. App: set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (and for iOS `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `GOOGLE_IOS_URL_SCHEME`) in `frontend/.env.local` and in `eas.json` for builds.
-4. Google sign-in uses native code, so it works in EAS or `expo run` builds, not Expo Go. The button is hidden in Expo Go and on the web build.
+4. On Android and iOS, Google sign-in uses native code, so it works in EAS or `expo run` builds, not Expo Go (the button is hidden there).
+5. On the web build, Google draws its own "Sign in with Google" button. Add every web address the app runs on (for local work `http://localhost` and `http://localhost:8081`) under **Authorized JavaScript origins** on the Web client, or Google shows nothing.
 
 A Google sign-in with the same verified email as an existing account signs in to that account. New Google accounts have no password; they delete their account without one.
 

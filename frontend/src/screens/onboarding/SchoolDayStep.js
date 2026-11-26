@@ -19,7 +19,7 @@ export function SchoolDayStep() {
   const { draft, syllabus, chosen } = useDraftSubjects();
   const update = useOnboardingStore((state) => state.update);
   const resetDraft = useOnboardingStore((state) => state.reset);
-  const name = useAuthStore((state) => state.user?.name);
+  const googleName = useAuthStore((state) => state.user?.name);
   const plannerChanged = useAuthStore((state) => state.plannerChanged);
   const [error, setError] = useState(null);
 
@@ -38,7 +38,8 @@ export function SchoolDayStep() {
     try {
       // The board's syllabus came from the server; the student's copy is saved only on this phone.
       const result = await profileApi.onboard({
-        name,
+        // The name typed on the first setup screen; the Google account name if they kept it.
+        name: draft.name?.trim() || googleName,
         board: draft.board,
         boardName: draft.boardName,
         cls: draft.cls,

@@ -18,20 +18,27 @@ import { useResourceStore } from '../store/resourceStore';
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
 jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(async () => true), shareAsync: jest.fn(async () => {}) }));
 jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn(async () => ({ canceled: true, assets: [] })) }));
+// The app signs in with Google only. The native account picker is faked; the API answers /auth/google.
+jest.mock('../services/googleSignIn', () => ({
+  googleSignInAvailable: true,
+  getGoogleIdToken: jest.fn(async () => 'google-id-token-from-the-account-picker'),
+  renderGoogleButton: jest.fn(),
+  signOutOfGoogle: jest.fn(async () => {}),
+}));
 
 const server = new MockAdapter(http);
 /** Token refresh goes through plain axios so it never loops through the retry interceptor. */
 const refreshServer = new MockAdapter(axios);
 
-const MEERA = { id: '665f1c2b9a1e4b0012345678', name: 'Meera', email: 'meera@example.test', role: 'student', hasPassword: true };
-const RAVI = { id: '665f1c2b9a1e4b0087654321', name: 'Ravi', email: 'ravi@example.test', role: 'student', hasPassword: true };
+const MEERA = { id: '665f1c2b9a1e4b0012345678', name: 'Meera', email: 'meera@example.test', role: 'student', hasPassword: false };
+const RAVI = { id: '665f1c2b9a1e4b0087654321', name: 'Ravi', email: 'ravi@example.test', role: 'student', hasPassword: false };
 const TOKENS = { accessToken: 'access', refreshToken: 'refresh', tokenType: 'Bearer', expiresIn: 900 };
 const ok = (data) => [200, { success: true, data }];
 const plannerFile = (user) => `file:///documents/planner-${user.id}.json`;
 
 /** The server only knows logins and the syllabus catalogue. */
 function serverFor(user) {
-  server.onPost('/auth/login').reply(() => ok({ user, tokens: TOKENS }));
+  server.onPost('/auth/google').reply(() => ok({ user, tokens: TOKENS }));
   server.onPost('/auth/logout').reply(204);
   server.onGet('/auth/me').reply(() => ok({ user }));
   server.onDelete('/auth/account').reply(204);
@@ -48,10 +55,10 @@ const savedPlanner = async (user) => {
   return text === undefined ? undefined : JSON.parse(text);
 };
 
-async function signIn(user) {
-  await fireEvent.changeText(await screen.findByTestId('field-email'), user.email);
-  await fireEvent.changeText(screen.getByTestId('field-password'), 'correct-horse-9');
-  await press('login-submit');
+/** Taps "Continue with Google"; `serverFor(user)` decides which account Google signs in as. */
+async function signIn() {
+  await screen.findByTestId('google-sign-in');
+  await press('google-sign-in');
 }
 
 async function setUp() {
@@ -103,7 +110,7 @@ describe('the app, with the plan kept on the phone', () => {
     const saved = await savedPlanner(MEERA);
     expect(saved.profile).toMatchObject({ name: 'Meera', cls: 9, board: 'cbse', boardName: 'CBSE' });
     expect(saved.chapters.length).toBe(CATALOG.reduce((sum, subject) => sum + subject.chapters.length, 0));
-    expect(server.history.map((request) => request.url)).toEqual(expect.arrayContaining(['/auth/login', '/syllabus/9']));
+    expect(server.history.map((request) => request.url)).toEqual(expect.arrayContaining(['/auth/google', '/syllabus/9']));
   });
 
   it('adds a unit test to the datesheet on the phone and plans its study slots', async () => {
@@ -198,28 +205,47 @@ describe('the app, with the plan kept on the phone', () => {
     ]);
   });
 
-  it('resets a forgotten password with an emailed code and signs straight in', async () => {
+  it('signs in with Google only: no email, password, sign-up or forgot-password on the phone', async () => {
     serverFor(MEERA);
-    let resetBody = null;
-    server.onPost('/auth/password/forgot').reply(204);
-    server.onPost('/auth/password/reset').reply((config) => {
-      resetBody = JSON.parse(config.data);
-      return [204];
-    });
     await render(<App />);
-    await press(await screen.findByTestId('open-forgot-password').then(() => 'open-forgot-password'));
-    await fireEvent.changeText(await screen.findByTestId('field-email'), 'Meera@Example.test');
-    await press('forgot-send');
+    expect(await screen.findByTestId('google-sign-in')).toBeTruthy();
+    for (const gone of ['field-email', 'field-password', 'login-submit', 'open-forgot-password']) expect(screen.queryByTestId(gone)).toBeNull();
+    expect(screen.queryByText(/Create an account/)).toBeNull();
 
-    expect(await screen.findByText('Check your email')).toBeTruthy();
-    await fireEvent.changeText(screen.getByTestId('field-code'), '123456');
-    await fireEvent.changeText(screen.getByTestId('field-newPassword'), 'new-pass-123');
-    await fireEvent.changeText(screen.getByTestId('field-confirm'), 'new-pass-123');
-    await press('reset-submit');
-
+    await signIn(MEERA);
     expect(await screen.findByText(/Hi Meera\./)).toBeTruthy();
-    expect(resetBody).toEqual({ email: 'meera@example.test', code: '123456', newPassword: 'new-pass-123' });
-    expect(JSON.parse(server.history.find((request) => request.url === '/auth/login').data)).toEqual({ email: 'meera@example.test', password: 'new-pass-123' });
+    const google = server.history.find((request) => request.url === '/auth/google');
+    expect(JSON.parse(google.data)).toEqual({ idToken: 'google-id-token-from-the-account-picker' });
+
+    // A Google account has no password, so Settings offers no "Change password".
+    await press(await screen.findByTestId('onboarding-demo').then(() => 'onboarding-demo'));
+    await openProfile();
+    expect(screen.queryByTestId('open-change-password')).toBeNull();
+  });
+
+  it('asks for the student’s name after Google sign-in, and lets them change it later in Profile', async () => {
+    serverFor(MEERA);
+    await render(<App />);
+    await signIn(MEERA);
+
+    // Filled in from Google, but the student can write their own.
+    const field = await screen.findByTestId('field-name');
+    expect(field.props.value).toBe('Meera');
+    await fireEvent.changeText(field, '   ');
+    await press('onboarding-start');
+    expect(await screen.findByText('Write your name so the planner knows what to call you.')).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('field-name'), 'Meeru');
+    expect(await screen.findByText(/Hi Meeru\./)).toBeTruthy();
+    await setUp();
+    expect((await savedPlanner(MEERA)).profile.name).toBe('Meeru');
+
+    await openProfile();
+    await press('edit-name');
+    await fireEvent.changeText(await screen.findByTestId('field-profile-name'), 'Meera Sahoo');
+    await press('save-name');
+    expect(await screen.findByText('Name saved.')).toBeTruthy();
+    expect(await screen.findByText('Meera Sahoo')).toBeTruthy();
+    expect((await savedPlanner(MEERA)).profile.name).toBe('Meera Sahoo');
   });
 
   it('adds a half-yearly exam with one paper per subject from the datesheet on the Plan page', async () => {
@@ -335,9 +361,9 @@ describe('the app, with the plan kept on the phone', () => {
 
     await openProfile();
     await press('open-delete-account');
-    await fireEvent.changeText(await screen.findByTestId('field-password'), 'correct-horse-9');
-    await press('delete-account-submit');
-    expect(await screen.findByTestId('login-submit')).toBeTruthy();
+    expect(screen.queryByTestId('field-password')).toBeNull();
+    await press(await screen.findByTestId('delete-account-submit').then(() => 'delete-account-submit'));
+    expect(await screen.findByTestId('google-sign-in')).toBeTruthy();
     expect(__files.has(plannerFile(MEERA))).toBe(false);
   });
 });

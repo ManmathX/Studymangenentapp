@@ -30,3 +30,13 @@ export function applyServerErrors(error, setError, fields) {
   }
   return applied;
 }
+
+export const MAX_NAME_LENGTH = 60;
+
+/** The student's name, trimmed, or `{ error }` saying what's wrong with it. */
+export function checkName(value) {
+  const name = (value ?? '').trim();
+  if (!name) return { error: 'Write your name so the planner knows what to call you.' };
+  if (name.length > MAX_NAME_LENGTH) return { error: `Keep your name under ${MAX_NAME_LENGTH} characters.` };
+  return { name };
+}

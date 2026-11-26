@@ -49,3 +49,8 @@ export async function signOutOfGoogle() {
     // Signing out of the app must not fail because Google's session couldn't be cleared.
   }
 }
+
+/** Web only (see googleSignIn.web.js); Android and iOS use getGoogleIdToken. */
+export async function renderGoogleButton() {
+  throw new Error('Google’s web button is only used on the web build.');
+}

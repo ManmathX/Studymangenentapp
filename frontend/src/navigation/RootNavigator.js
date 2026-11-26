@@ -1,8 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoadingState } from '../components/ui/States';
-import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
-import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { ClassStep, SchoolDayStep, SubjectsStep, TaughtStep, TestsStep, WelcomeStep } from '../screens/onboarding/OnboardingSteps';
 import { useAuthStore } from '../store/authStore';
 import { MainTabs } from './MainTabs';
@@ -17,7 +15,6 @@ const lazy = {
   NewHomework: () => require('../screens/modals/NewHomeworkScreen').NewHomeworkScreen,
   EditExam: () => require('../screens/modals/EditExamScreen').EditExamScreen,
   NewDatesheet: () => require('../screens/modals/NewDatesheetScreen').NewDatesheetScreen,
-  ChangePassword: () => require('../screens/account/ChangePasswordScreen').ChangePasswordScreen,
   DeleteAccount: () => require('../screens/account/DeleteAccountScreen').DeleteAccountScreen,
 };
 
@@ -31,9 +28,8 @@ export function RootNavigator() {
   if (status === 'signedOut') {
     return (
       <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {/* Students sign in, and sign up, with Google only. */}
         <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       </Stack.Navigator>
     );
   }
@@ -61,7 +57,6 @@ export function RootNavigator() {
         <Stack.Screen name="NewHomework" getComponent={lazy.NewHomework} options={{ title: 'New Homework' }} />
         <Stack.Screen name="EditExam" getComponent={lazy.EditExam} options={{ title: 'Edit Paper' }} />
         <Stack.Screen name="NewDatesheet" getComponent={lazy.NewDatesheet} options={{ title: 'Add to Datesheet' }} />
-        <Stack.Screen name="ChangePassword" getComponent={lazy.ChangePassword} options={{ title: 'Change Password' }} />
         <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete Account' }} />
       </Stack.Group>
     </Stack.Navigator>
