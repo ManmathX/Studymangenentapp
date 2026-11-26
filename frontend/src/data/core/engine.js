@@ -174,6 +174,47 @@ function fitWindow(busy, from, end, mins) {
   return longest ?? null;
 }
 
+/** Longest homework a student can add: a big project, spread over several days. */
+export const MAX_HOMEWORK_MINS = 600;
+/** Smallest piece a long homework is split into; anything shorter joins its neighbour. */
+const MIN_HOMEWORK_PART_MINS = 15;
+
+/**
+ * Splits `mins` of homework over `days` (oldest first). Fills the days nearest the due date first,
+ * each up to `roomOf(date)` free minutes, in 5-minute steps. If the free time runs out, the rest is
+ * shared evenly over every day. Returns [{ date, mins }] in date order; one entry when it fits in a day.
+ */
+export function splitHomework(mins, days, roomOf) {
+  if (mins <= 0 || !days.length) return [];
+  const plan = new Map();
+  let left = mins;
+  for (const date of [...days].reverse()) {
+    if (!left) break;
+    const take = Math.min(left, Math.floor(Math.max(0, roomOf(date)) / 5) * 5);
+    if (take < MIN_HOMEWORK_PART_MINS && take < left) continue;
+    plan.set(date, take);
+    left -= take;
+  }
+  if (left) {
+    const share = Math.ceil(left / days.length / 5) * 5;
+    for (const date of [...days].reverse()) {
+      if (!left) break;
+      const add = Math.min(left, share);
+      plan.set(date, (plan.get(date) ?? 0) + add);
+      left -= add;
+    }
+  }
+  const parts = days.filter((date) => plan.get(date)).map((date) => ({ date, mins: plan.get(date) }));
+  // Fold a too-short piece into the day after it (or before it, if it is the last day).
+  for (let index = parts.length - 1; index >= 0 && parts.length > 1; index -= 1) {
+    if (parts[index].mins >= MIN_HOMEWORK_PART_MINS) continue;
+    const into = parts[index + 1] ?? parts[index - 1];
+    into.mins += parts[index].mins;
+    parts.splice(index, 1);
+  }
+  return parts;
+}
+
 /** Minutes of the day's Homework slot: the student's choice, leaving at least 30 minutes for study. */
 export function homeworkSlotMins(profile, date) {
   return Math.max(15, Math.min(profile.homeworkMins ?? DEFAULT_HOMEWORK_MINS, limitFor(profile, date) - MIN_SELF_STUDY_MINS));

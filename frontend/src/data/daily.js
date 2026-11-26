@@ -1,5 +1,5 @@
-import { addDays, diffDays } from './core/dates';
-import { bagFor, nextSchoolDay, periodsFor, priority } from './core/engine';
+import { addDays, diffDays, eachDay } from './core/dates';
+import { bagFor, homeworkSlotMins, MAX_HOMEWORK_MINS, nextSchoolDay, periodsFor, priority, splitHomework } from './core/engine';
 import { isSubjectPeriod, PERIOD_LABELS, ROUTINES, SUBJECTS } from './core/syllabus';
 import { clock } from './clock';
 import { read, write } from './db';
@@ -47,7 +47,15 @@ export function homeworkSummary() {
   };
 }
 
-/** Saves homework and plans a task for the day before it is due. */
+/** Minutes of school homework already planned on `date` (test-prep homework has its own slot). */
+function homeworkMinsOn(draft, date) {
+  return draft.tasks.filter((task) => task.date === date && task.kind === 'homework' && !task.examId && task.status !== 'skipped').reduce((sum, task) => sum + task.mins, 0);
+}
+
+/**
+ * Saves homework and plans it before it is due: on the day before when it fits that day's Homework
+ * slot, otherwise split into parts over the days before, filling the latest free slots first.
+ */
 export function createHomework(input) {
   return write((draft) => {
     const { profile, today } = studentDay(draft);
@@ -56,9 +64,9 @@ export function createHomework(input) {
     const note = optionalText(input.note, 'note', 500);
     const due = dateKey(input.due, 'due');
     if (due < today) throw badRequest('Pick a due date from today onwards', 'DUE_IN_PAST');
-    const mins = intIn(input.mins, 5, 240, 'mins');
+    const mins = intIn(input.mins, 5, MAX_HOMEWORK_MINS, 'mins');
     const difficulty = intIn(input.difficulty, 1, 3, 'difficulty');
-    const day = due > today ? addDays(due, -1) : today;
+    const last = due > today ? addDays(due, -1) : today;
     const homework = {
       id: newId(draft),
       subject: input.subject,
@@ -73,21 +81,24 @@ export function createHomework(input) {
       doneOn: null,
     };
     draft.homework.push(homework);
-    const [task] = insertTasks(draft, [
-      {
-        date: day,
+    const parts = splitHomework(mins, [...eachDay(today, last)], (date) => homeworkSlotMins(profile, date) - homeworkMinsOn(draft, date));
+    const score = priority(Math.max(1, diffDays(today, due)), HOMEWORK_WEIGHT, difficulty);
+    const tasks = insertTasks(
+      draft,
+      parts.map((part, index) => ({
+        date: part.date,
         subject: input.subject,
-        title,
+        title: parts.length > 1 ? `${title} (part ${index + 1} of ${parts.length})` : title,
         kind: 'homework',
-        mins,
+        mins: part.mins,
         homeworkId: homework.id,
-        deadline: day,
+        deadline: last,
         source: 'me',
         status: 'accepted',
-        score: priority(Math.max(1, diffDays(today, due)), HOMEWORK_WEIGHT, difficulty),
-      },
-    ]);
-    return { homework: copy(homework), task: copy(task) };
+        score,
+      })),
+    );
+    return { homework: copy(homework), task: copy(tasks[0]), tasks: tasks.map(copy) };
   });
 }
 

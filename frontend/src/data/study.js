@@ -605,7 +605,10 @@ export function updateTask(id, patch) {
     let chapter = null;
     if (patch.done === true && !wasDone) {
       const item = task.homeworkId ? draft.homework.find((entry) => entry.id === task.homeworkId) : null;
-      if (item && !item.done && item.due <= addDays(today, 1) && task.mins >= item.mins * 0.8) {
+      // Homework split over several days closes when its last part is done; a single task closes it near the due date.
+      const parts = item ? draft.tasks.filter((entry) => entry.homeworkId === item.id && entry.status !== 'skipped') : [];
+      const closes = parts.length > 1 ? parts.every((entry) => entry.done) : item && item.due <= addDays(today, 1) && task.mins >= item.mins * 0.8;
+      if (item && !item.done && closes) {
         item.done = true;
         item.doneOn = today;
         homework = copy(item);

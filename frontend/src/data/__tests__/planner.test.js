@@ -388,6 +388,46 @@ describe('daily homework and self study slots', () => {
     expect(testWork.reduce((sum, row) => sum + row.task.mins, 0)).toBeLessThanOrEqual(prepSlot.end - prepSlot.start);
   });
 
+  it('plans homework that fits one Homework slot on the day before it is due', async () => {
+    await onboarded();
+    const { tasks } = await homeworkApi.create({ subject: 'maths', title: 'Exercise 8.2', note: '', due: addDays(TODAY, 4), mins: 45, difficulty: 2 });
+    expect(tasks.map(({ date, mins, title }) => ({ date, mins, title }))).toEqual([{ date: addDays(TODAY, 3), mins: 45, title: 'Exercise 8.2' }]);
+  });
+
+  it('splits long homework over the days before it is due, nearest the due date first', async () => {
+    await onboarded(); // 60-minute Homework slot
+    const { tasks } = await homeworkApi.create({ subject: 'maths', title: 'Project', note: '', due: addDays(TODAY, 5), mins: 150, difficulty: 2 });
+    expect(tasks.map(({ date, mins, title }) => ({ date, mins, title }))).toEqual([
+      { date: addDays(TODAY, 2), mins: 30, title: 'Project (part 1 of 3)' },
+      { date: addDays(TODAY, 3), mins: 60, title: 'Project (part 2 of 3)' },
+      { date: addDays(TODAY, 4), mins: 60, title: 'Project (part 3 of 3)' },
+    ]);
+  });
+
+  it('works around homework already planned and shares out what does not fit', async () => {
+    await onboarded();
+    await homeworkApi.create({ subject: 'maths', title: 'Exercise 1', note: '', due: addDays(TODAY, 2), mins: 60, difficulty: 2 });
+    const { tasks } = await homeworkApi.create({ subject: 'maths', title: 'Essay', note: '', due: addDays(TODAY, 2), mins: 180, difficulty: 2 });
+    // Tomorrow's slot is full, so today takes 60 and the remaining 120 is shared between both days.
+    expect(tasks.reduce((sum, task) => sum + task.mins, 0)).toBe(180);
+    expect(tasks.map((task) => task.date)).toEqual([TODAY, addDays(TODAY, 1)]);
+  });
+
+  it('closes split homework only when every part is done', async () => {
+    await onboarded();
+    const { homework, tasks } = await homeworkApi.create({ subject: 'maths', title: 'Project', note: '', due: addDays(TODAY, 3), mins: 120, difficulty: 2 });
+    expect(tasks).toHaveLength(2);
+    expect((await tasksApi.update(tasks[0].id, { done: true })).homework).toBeNull();
+    const last = await tasksApi.update(tasks[1].id, { done: true });
+    expect(last.homework).toMatchObject({ id: homework.id, done: true });
+  });
+
+  it('accepts custom homework lengths up to 10 hours', async () => {
+    await onboarded();
+    await expect(homeworkApi.create({ subject: 'maths', title: 'Big project', note: '', due: addDays(TODAY, 12), mins: 600, difficulty: 3 })).resolves.toBeTruthy();
+    await expect(homeworkApi.create({ subject: 'maths', title: 'Too big', note: '', due: addDays(TODAY, 12), mins: 615, difficulty: 3 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('lets the student change the homework slot length', async () => {
     await onboarded();
     expect((await profileApi.get()).homeworkMins).toBe(60);

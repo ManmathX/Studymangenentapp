@@ -107,14 +107,17 @@ export const examActions = {
 export const homeworkActions = {
   create: (body, today) =>
     run(() => homeworkApi.create(body), {
-      success: (result) => `Added. A ${duration(result.task.mins)} task is in your plan for ${dayName(result.task.date, today)}.`,
+      success: (result) =>
+        result.tasks.length > 1
+          ? `Added. Split into ${result.tasks.length} parts, from ${dayName(result.tasks[0].date, today)} to ${dayName(result.tasks.at(-1).date, today)}.`
+          : `Added. A ${duration(result.task.mins)} task is in your plan for ${dayName(result.task.date, today)}.`,
     }),
   toggleDone: (item) =>
     run(() => homeworkApi.setDone(item.id, !item.done), { success: item.done ? 'Moved back to pending.' : 'Homework marked done.' }),
   async remove(item) {
     const confirmed = await confirmAction({
       title: 'Delete this homework?',
-      message: `“${item.title}” and its unfinished study task will be deleted. Time you already studied stays in your history.`,
+      message: `“${item.title}” and its unfinished study tasks will be deleted. Time you already studied stays in your history.`,
     });
     if (!confirmed) return null;
     return run(() => homeworkApi.remove(item.id), { success: 'Homework deleted.' });
