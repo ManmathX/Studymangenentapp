@@ -28,6 +28,9 @@ export interface PlannerProfile {
   examSeason: boolean;
   tuitionDays: number[];
   /** Minutes after midnight. */
+  tuitionStart: number;
+  tuitionEnd: number;
+  /** Minutes after midnight. */
   schoolStart: number;
   schoolEnd: number;
 }

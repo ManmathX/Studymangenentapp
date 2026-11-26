@@ -302,6 +302,8 @@ export function buildDemoData(today: DateKey, timezone: string): DemoData {
     schoolStart: 465,
     schoolEnd: 825,
     tuitionDays: [1, 3, 5],
+    tuitionStart: 960,
+    tuitionEnd: 1050,
     dailyLimitMins: 180,
     weeklyGoalMins: 900,
     ageMode: 'deeper',

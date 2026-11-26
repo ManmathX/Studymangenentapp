@@ -73,3 +73,17 @@ describe('editing a test during setup', () => {
     ]);
   });
 });
+
+describe('datesheet drafted during setup', () => {
+  it('adds a whole exam at once and replaces it when edited', () => {
+    const paper = (id, subject) => ({ id, subject, name: `Unit test 1: ${subject}`, date: '2026-12-01', weight: 10, chapterKeys: [`${subject}-1`], series: 'Unit test 1', kind: 'unit' });
+    store().saveSeries([paper('draft-1', 'maths'), paper('draft-2', 'science')]);
+    expect(draft().exams.map((exam) => exam.id)).toEqual(['draft-1', 'draft-2']);
+
+    store().saveSeries([paper('draft-3', 'maths')], ['draft-1', 'draft-2']);
+    expect(draft().exams.map((exam) => exam.id)).toEqual(['draft-3']);
+
+    store().removeExams(['draft-3']);
+    expect(draft().exams).toEqual([]);
+  });
+});

@@ -61,6 +61,8 @@ function toRecord(doc: ProfileDocument): ProfileRecord {
     schoolStart: doc.schoolStart,
     schoolEnd: doc.schoolEnd,
     tuitionDays: doc.tuitionDays,
+    tuitionStart: doc.tuitionStart ?? 960,
+    tuitionEnd: doc.tuitionEnd ?? 1050,
     dailyLimitMins: doc.dailyLimitMins,
     weeklyGoalMins: doc.weeklyGoalMins,
     ageMode: doc.ageMode,

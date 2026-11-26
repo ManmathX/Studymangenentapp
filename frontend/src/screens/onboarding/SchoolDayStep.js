@@ -39,6 +39,10 @@ export function SchoolDayStep() {
       setError('School has to end after it starts.');
       return;
     }
+    if (draft.tuitionDays.length && timeToMinutes(draft.tuitionEnd) <= timeToMinutes(draft.tuitionStart)) {
+      setError('Tuition has to end after it starts.');
+      return;
+    }
     if (!syllabus.data) {
       setError('Your subjects are still loading. Try again in a moment.');
       return;
@@ -56,6 +60,8 @@ export function SchoolDayStep() {
         schoolStart: draft.schoolStart,
         schoolEnd: draft.schoolEnd,
         tuitionDays: draft.tuitionDays,
+        tuitionStart: draft.tuitionStart,
+        tuitionEnd: draft.tuitionEnd,
         dailyLimitMins: draft.dailyLimitMins,
         timezone: deviceTimeZone(),
       });
@@ -80,12 +86,19 @@ export function SchoolDayStep() {
         <Divider />
         <Stepper label="School ends" valueLabel={draft.schoolEnd} onDecrement={() => shift('schoolEnd', -15)} onIncrement={() => shift('schoolEnd', 15)} />
       </Card>
-      <FieldHeading>Tuition days, 16:00 to 17:30</FieldHeading>
+      <FieldHeading>Tuition days</FieldHeading>
       <ChipGroup label="Tuition days">
         {WEEKDAYS.map(({ day, label }) => (
           <Chip key={day} label={label} selected={draft.tuitionDays.includes(day)} onPress={() => toggleTuition(day)} />
         ))}
       </ChipGroup>
+      {draft.tuitionDays.length ? (
+        <Card flush>
+          <Stepper label="Tuition starts" valueLabel={draft.tuitionStart} onDecrement={() => shift('tuitionStart', -15)} onIncrement={() => shift('tuitionStart', 15)} />
+          <Divider />
+          <Stepper label="Tuition ends" valueLabel={draft.tuitionEnd} onDecrement={() => shift('tuitionEnd', -15)} onIncrement={() => shift('tuitionEnd', 15)} />
+        </Card>
+      ) : null}
       <FieldHeading>Most study time on a school day</FieldHeading>
       <SegmentedControl
         label="Daily study limit"

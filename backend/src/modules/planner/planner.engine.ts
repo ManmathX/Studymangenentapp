@@ -146,7 +146,7 @@ export function fixedBlocks(
     { start: schoolOut, end: schoolOut + 75, label: 'Lunch and rest', kind: 'rest' },
   ];
   if (profile.tuitionDays.includes(day))
-    blocks.push({ start: 16 * 60, end: 17 * 60 + 30, label: 'Tuition', kind: 'tuition' });
+    blocks.push({ start: profile.tuitionStart, end: profile.tuitionEnd, label: 'Tuition', kind: 'tuition' });
   blocks.push({ start: 20 * 60, end: 20 * 60 + 45, label: 'Dinner with family', kind: 'rest' });
   return { start: schoolOut + 75, end: DAY_END, blocks };
 }
@@ -292,7 +292,10 @@ export function coverage(chapters: Pick<PlannerChapter, 'status'>[]) {
   for (const chapter of chapters) counts[chapter.status] += 1;
   const total = chapters.length;
   const covered = counts.revised + counts.mastered;
-  return { counts, total, covered, percent: total ? Math.round((covered / total) * 100) : 0 };
+  // Taught: anything past "not started", including chapters ticked as taught during setup.
+  const taught = total - counts.not;
+  const pct = (part: number) => (total ? Math.round((part / total) * 100) : 0);
+  return { counts, total, covered, percent: pct(covered), taught, taughtPercent: pct(taught) };
 }
 
 export function readiness(chapterKeys: string[], statusByKey: Map<string, ChapterStatus>) {

@@ -2,17 +2,23 @@ import type { TxHandle } from '../../database/transaction.js';
 import { idOf, toObjectId } from '../../database/ids.js';
 import type { SubjectId } from '../syllabus/syllabus.data.js';
 import type { PlannerExam } from '../planner/planner.types.js';
-import { ExamModel, type ExamDocument } from './exam.model.js';
+import { ExamModel, type ExamDocument, type ExamKind } from './exam.model.js';
 
 export interface ExamRecord extends PlannerExam {
   subject: SubjectId;
+  /** Datesheet group, e.g. "Half-yearly". Null for a stand-alone test. */
+  series: string | null;
+  kind: ExamKind | null;
 }
 
-export type NewExam = Omit<ExamRecord, 'id'>;
+export type NewExam = Omit<ExamRecord, 'id' | 'series' | 'kind'> & {
+  series?: string | null;
+  kind?: ExamKind | null;
+};
 
 export interface ExamRepository {
   create(userId: string, exam: NewExam, tx?: TxHandle): Promise<ExamRecord>;
-  insertMany(userId: string, exams: NewExam[], tx: TxHandle): Promise<ExamRecord[]>;
+  insertMany(userId: string, exams: NewExam[], tx?: TxHandle): Promise<ExamRecord[]>;
   list(userId: string, fromDate?: string): Promise<ExamRecord[]>;
   findById(userId: string, id: string): Promise<ExamRecord | null>;
   update(userId: string, id: string, patch: Partial<NewExam>): Promise<ExamRecord | null>;
@@ -28,6 +34,8 @@ function toRecord(doc: ExamDocument): ExamRecord {
     date: doc.date,
     weight: doc.weight,
     chapterKeys: doc.chapterKeys,
+    series: doc.series ?? null,
+    kind: doc.kind ?? null,
   };
 }
 
@@ -40,7 +48,7 @@ export class MongoExamRepository implements ExamRepository {
     return toRecord(doc.toObject());
   }
 
-  async insertMany(userId: string, exams: NewExam[], tx: TxHandle): Promise<ExamRecord[]> {
+  async insertMany(userId: string, exams: NewExam[], tx?: TxHandle): Promise<ExamRecord[]> {
     if (!exams.length) return [];
     const owner = toObjectId(userId);
     const docs = await ExamModel.insertMany(

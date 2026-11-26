@@ -210,6 +210,7 @@ export class DashboardService {
         weeklyGoalMins: ctx.profile.weeklyGoalMins,
         streak: activity.streak,
         coveragePercent: coverage(chapters).percent,
+        taughtPercent: coverage(chapters).taughtPercent,
         nextExam: nextExam ? { name: nextExam.name, date: nextExam.date } : null,
       },
       later,

@@ -47,6 +47,8 @@ export class ProfileService {
       schoolStart: profile.schoolStart,
       schoolEnd: profile.schoolEnd,
       tuitionDays: profile.tuitionDays,
+      tuitionStart: profile.tuitionStart,
+      tuitionEnd: profile.tuitionEnd,
       dailyLimitMins: profile.dailyLimitMins,
       weeklyGoalMins: profile.weeklyGoalMins,
       ageMode: profile.ageMode,

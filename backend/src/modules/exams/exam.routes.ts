@@ -8,6 +8,7 @@ import {
   trimmedText,
 } from '../../common/utils/validators.js';
 import { CHAPTER_STATUSES } from '../planner/planner.types.js';
+import { EXAM_KINDS } from './exam.model.js';
 import type { ExamService } from './exam.service.js';
 
 const chapterKeysSchema = z
@@ -23,8 +24,12 @@ const examSchema = z
     date: z.string(),
     weight: z.number().int(),
     chapterKeys: z.array(z.string()),
+    series: z.string().nullable().openapi({ description: 'Datesheet group, e.g. "Half-yearly"' }),
+    kind: z.enum(EXAM_KINDS).nullable(),
   })
   .openapi('Exam');
+
+const seriesSchema = trimmedText(1, 60);
 
 const upcomingExamSchema = examSchema
   .extend({
@@ -62,10 +67,42 @@ export function examRoutes(exams: ExamService): Route[] {
           date: dateKeySchema,
           weight: z.number().int().min(1).max(100),
           chapterKeys: chapterKeysSchema,
+          series: seriesSchema.nullable().optional(),
+          kind: z.enum(EXAM_KINDS).nullable().optional(),
         })
         .openapi('NewExam'),
       response: examSchema,
       handler: ({ auth, body }) => exams.create(auth.userId, body),
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/exams/datesheet',
+      access: 'user',
+      summary: 'Add a datesheet',
+      description:
+        'Adds every paper of one exam (e.g. the half-yearly) at once, grouped under `series`.',
+      tags,
+      status: 201,
+      body: z
+        .strictObject({
+          series: seriesSchema,
+          kind: z.enum(EXAM_KINDS),
+          papers: z
+            .array(
+              z.strictObject({
+                subject: subjectSchema,
+                name: trimmedText(1, 80),
+                date: dateKeySchema,
+                weight: z.number().int().min(1).max(100).default(20),
+                chapterKeys: chapterKeysSchema,
+              }),
+            )
+            .min(1, 'Add at least one paper')
+            .max(20),
+        })
+        .openapi('NewDatesheet'),
+      response: examSchema.array(),
+      handler: ({ auth, body }) => exams.createDatesheet(auth.userId, body),
     }),
     defineRoute({
       method: 'patch',
@@ -84,6 +121,8 @@ export function examRoutes(exams: ExamService): Route[] {
           date: dateKeySchema.optional(),
           weight: z.number().int().min(1).max(100).optional(),
           chapterKeys: chapterKeysSchema.optional(),
+          series: seriesSchema.nullable().optional(),
+          kind: z.enum(EXAM_KINDS).nullable().optional(),
         })
         .refine((body) => Object.keys(body).length > 0, 'Send at least one field to change')
         .openapi('ExamPatch'),

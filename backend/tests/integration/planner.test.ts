@@ -247,6 +247,55 @@ describe('tests (exams)', () => {
     await user.delete(`/exams/${created.body.data.id}`).expect(404);
     await user.delete('/exams/not-an-id').expect(400);
   });
+
+  it('adds a whole datesheet at once, all or nothing', async () => {
+    const { user } = await student();
+    const paper = (subject: string, date: string, chapterKeys: string[]) => ({
+      subject,
+      name: `Half-yearly: ${subject}`,
+      date,
+      chapterKeys,
+    });
+    const created = await user
+      .post('/exams/datesheet', {
+        series: 'Half-yearly',
+        kind: 'halfYearly',
+        papers: [
+          paper('maths', '2026-12-07', ['maths-1']),
+          paper('science', '2026-12-09', ['science-1', 'science-2']),
+        ],
+      })
+      .expect(201);
+    expect(created.body.data).toHaveLength(2);
+    expect(created.body.data[0]).toMatchObject({
+      series: 'Half-yearly',
+      kind: 'halfYearly',
+      weight: 20,
+    });
+    const upcoming = (await user.get('/exams').expect(200)).body.data as {
+      series: string | null;
+    }[];
+    expect(upcoming.filter((exam) => exam.series === 'Half-yearly')).toHaveLength(2);
+    expect(upcoming.filter((exam) => exam.series === null)).toHaveLength(1);
+
+    const bad = await user
+      .post('/exams/datesheet', {
+        series: 'Final',
+        kind: 'final',
+        papers: [
+          paper('maths', '2027-01-10', ['maths-1']),
+          paper('science', '2027-01-11', ['maths-2']),
+        ],
+      })
+      .expect(400);
+    expect(bad.body.error.code).toBe('UNKNOWN_CHAPTER');
+    expect((await user.get('/exams').expect(200)).body.data).toHaveLength(3);
+
+    const moved = await user
+      .patch(`/exams/${created.body.data[0].id}`, { series: null })
+      .expect(200);
+    expect(moved.body.data.series).toBeNull();
+  });
 });
 
 describe('homework', () => {
@@ -412,7 +461,11 @@ describe('dashboards', () => {
     const habits = await user.get('/dashboard/habits').expect(200);
     expect(habits.body.data.calendar).toHaveLength(28);
     const sharing = await user.get('/dashboard/sharing').expect(200);
-    expect(sharing.body.data.preview).toMatchObject({ streak: 0, coveragePercent: 0 });
+    expect(sharing.body.data.preview).toMatchObject({
+      streak: 0,
+      coveragePercent: 0,
+      taughtPercent: expect.any(Number),
+    });
   });
 });
 

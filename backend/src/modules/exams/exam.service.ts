@@ -4,6 +4,7 @@ import type { ChapterRepository } from '../chapters/chapter.repository.js';
 import { readiness } from '../planner/planner.engine.js';
 import type { StudentContext } from '../planner/student-context.js';
 import type { SubjectId } from '../syllabus/syllabus.data.js';
+import type { ExamKind } from './exam.model.js';
 import type { ExamRecord, ExamRepository } from './exam.repository.js';
 
 export interface NewExamInput {
@@ -12,6 +13,14 @@ export interface NewExamInput {
   date: string;
   weight: number;
   chapterKeys: string[];
+  series?: string | null;
+  kind?: ExamKind | null;
+}
+
+export interface DatesheetInput {
+  series: string;
+  kind: ExamKind;
+  papers: Omit<NewExamInput, 'series' | 'kind'>[];
 }
 
 export class ExamService {
@@ -49,7 +58,36 @@ export class ExamService {
     if (input.date <= ctx.today)
       throw new BadRequestError('Pick a date after today', 'EXAM_IN_PAST');
     const chapterKeys = await this.checkSubjectAndChapters(userId, ctx.profile.subjects, input);
-    return this.exams.create(userId, { ...input, chapterKeys });
+    return this.exams.create(userId, {
+      ...input,
+      chapterKeys,
+      series: input.series ?? null,
+      kind: input.kind ?? null,
+    });
+  }
+
+  /**
+   * Adds every paper of one exam (a datesheet) at once. All papers are checked before any is
+   * saved, so a bad paper leaves nothing half-added.
+   */
+  async createDatesheet(userId: string, input: DatesheetInput): Promise<ExamRecord[]> {
+    const ctx = await this.context.load(userId);
+    const seen = new Set<string>();
+    const papers = [];
+    for (const paper of input.papers) {
+      if (paper.date <= ctx.today)
+        throw new BadRequestError(`${paper.name} must be after today`, 'EXAM_IN_PAST');
+      const slot = `${paper.subject}|${paper.date}`;
+      if (seen.has(slot))
+        throw new BadRequestError(
+          `${paper.name} is listed twice on the same day`,
+          'DUPLICATE_PAPER',
+        );
+      seen.add(slot);
+      const chapterKeys = await this.checkSubjectAndChapters(userId, ctx.profile.subjects, paper);
+      papers.push({ ...paper, chapterKeys, series: input.series, kind: input.kind });
+    }
+    return this.exams.insertMany(userId, papers);
   }
 
   /**
@@ -76,6 +114,8 @@ export class ExamService {
       date: next.date,
       weight: next.weight,
       chapterKeys,
+      series: next.series ?? null,
+      kind: next.kind ?? null,
     });
     if (!updated) throw new NotFoundError('Test not found', 'EXAM_NOT_FOUND');
     return updated;

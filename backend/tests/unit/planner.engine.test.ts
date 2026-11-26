@@ -24,6 +24,8 @@ const profile: PlannerProfile = {
   ageMode: 'deeper',
   examSeason: false,
   tuitionDays: [1, 3, 5],
+  tuitionStart: 960,
+  tuitionEnd: 1050,
   schoolStart: 7 * 60 + 45,
   schoolEnd: 13 * 60 + 45,
 };

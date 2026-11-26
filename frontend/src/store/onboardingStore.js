@@ -18,6 +18,8 @@ const initialDraft = () => ({
   schoolStart: '07:45',
   schoolEnd: '13:45',
   tuitionDays: [1, 3, 5],
+  tuitionStart: '16:00',
+  tuitionEnd: '17:30',
   dailyLimitMins: 180,
 });
 
@@ -84,6 +86,10 @@ export const useOnboardingStore = create((set) => ({
     set((state) => ({ draft: { ...state.draft, taught: { ...state.draft.taught, [key]: !state.draft.taught[key] } } })),
   addExam: (exam) => set((state) => ({ draft: { ...state.draft, exams: [...state.draft.exams, exam] } })),
   updateExam: (exam) => set((state) => ({ draft: { ...state.draft, exams: state.draft.exams.map((item) => (item.id === exam.id ? exam : item)) } })),
+  /** Adds one exam's papers to the draft datesheet, replacing the papers in `replaceIds` (when editing). */
+  saveSeries: (papers, replaceIds = []) =>
+    set((state) => ({ draft: { ...state.draft, exams: [...state.draft.exams.filter((exam) => !replaceIds.includes(exam.id)), ...papers] } })),
+  removeExams: (ids) => set((state) => ({ draft: { ...state.draft, exams: state.draft.exams.filter((exam) => !ids.includes(exam.id)) } })),
   removeExam: (id) => set((state) => ({ draft: { ...state.draft, exams: state.draft.exams.filter((exam) => exam.id !== id) } })),
   toggleTuition: (day) =>
     set((state) => {

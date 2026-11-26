@@ -138,7 +138,7 @@ export function ExamForm({ profile, exam = null, onDone, submit }) {
           {errors.chapterKeys.message}
         </Text>
       ) : null}
-      {editing ? <Muted small>Study blocks already in your plan stay. Tap “Fill free slots before exams” in Plan to plan around the new details.</Muted> : null}
+      {editing ? <Muted small>Study blocks already in your plan stay. Use “Schedule from syllabus” in Plan to add more.</Muted> : null}
       <Button title={editing ? 'Save changes' : 'Add test'} variant="primary" block onPress={onSubmit} loading={isSubmitting} testID="exam-submit" />
     </View>
   );

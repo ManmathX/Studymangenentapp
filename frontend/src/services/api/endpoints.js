@@ -66,6 +66,7 @@ export const suggestionsApi = {
 export const examsApi = {
   upcoming: () => api.get('/exams'),
   create: (body) => api.post('/exams', body),
+  createDatesheet: (body) => api.post('/exams/datesheet', body),
   update: (id, patch) => api.patch(`/exams/${id}`, patch),
   remove: (id) => api.delete(`/exams/${id}`),
 };

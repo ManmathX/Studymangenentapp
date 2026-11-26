@@ -152,6 +152,8 @@ export class OnboardingService {
       schoolStart: toMinutes(body.schoolStart),
       schoolEnd: toMinutes(body.schoolEnd),
       tuitionDays: [...new Set(body.tuitionDays)].sort(),
+      tuitionStart: toMinutes(body.tuitionStart),
+      tuitionEnd: toMinutes(body.tuitionEnd),
       dailyLimitMins: body.dailyLimitMins,
       weeklyGoalMins: body.dailyLimitMins * 5,
       ageMode: body.cls <= 8 ? 'simple' : 'deeper',

@@ -26,12 +26,11 @@ export function TodayScreen({ navigation }) {
 }
 
 function TodayContent({ data, navigation }) {
-  const openPlan = useCallback((date) => navigation.navigate('Plan', { date, at: Date.now() }), [navigation]);
+  const openPlan = useCallback((date) => navigation.navigate('Plan', { section: 'plan', date, at: Date.now() }), [navigation]);
   return (
     <>
       <NextTest exam={data.nextExam} navigation={navigation} />
       {data.examSeason ? <Banner tone="info" icon="moon" title="Exam-season mode is on" body="Study groups are muted and your daily limit is 45 min higher." /> : null}
-      <Summary data={data} />
       {data.suggestedBlocks.count ? (
         <Banner tone="info" icon="spark" title={`${plural(data.suggestedBlocks.count, 'study block')} suggested`} body="The planner found free time before your tests. You choose what stays.">
           <View style={styles.buttons}>
@@ -40,6 +39,15 @@ function TodayContent({ data, navigation }) {
         </Banner>
       ) : null}
       <TodayPlan data={data} navigation={navigation} />
+      <View style={styles.pair}>
+        <View style={styles.flex}>
+          <Button title="Homework" icon="plus" block onPress={() => navigation.navigate('NewHomework')} testID="today-add-homework" />
+        </View>
+        <View style={styles.flex}>
+          <Button title="Syllabus / test" icon="plus" block onPress={() => navigation.navigate('Syllabus')} testID="today-open-syllabus" />
+        </View>
+      </View>
+      <Summary data={data} />
       {data.heavyDay ? (
         <Banner title={`${capitalize(dayName(data.heavyDay.date, data.today))} looks too heavy`} body={`${duration(data.heavyDay.plannedMins)} planned against a limit of ${duration(data.heavyDay.limitMins)}.`}>
           <View style={styles.buttons}>
@@ -61,7 +69,7 @@ function NextTest({ exam, navigation }) {
         <Text style={[styles.examName, { color: colors.text }]}>No tests added yet</Text>
         <Text style={{ color: colors.textSecondary, marginTop: 4 }}>Add your next test and the planner spaces out revision before it.</Text>
         <View style={styles.buttons}>
-          <Button title="Add a test" size="sm" variant="primary" onPress={() => navigation.navigate('NewExam')} />
+          <Button title="Add your datesheet" size="sm" variant="primary" onPress={() => navigation.navigate('NewDatesheet', { kind: 'unit' })} />
           <Button title="Schedule from syllabus" size="sm" onPress={() => navigation.navigate('Syllabus')} />
         </View>
       </Card>
@@ -90,7 +98,7 @@ function NextTest({ exam, navigation }) {
           </Text>{' '}
           chapters revised
         </Text>
-        <Button title="Revision plan" size="sm" onPress={() => navigation.navigate('Plan')} />
+        <Button title="Revision plan" size="sm" onPress={() => navigation.navigate('Plan', { section: 'plan' })} />
       </View>
     </Card>
   );
@@ -162,8 +170,8 @@ function TodayPlan({ data, navigation }) {
         <EmptyState message="Nothing planned. Pick a task in Plan or accept a suggestion." />
       )}
       <View style={[styles.buttons, styles.cardButtons]}>
-        <Button title="Start focus" icon="play" size="sm" variant="primary" onPress={() => navigation.navigate('Habits')} />
-        <Button title="Full plan" size="sm" onPress={() => navigation.navigate('Plan')} />
+        <Button title="Start focus" icon="play" size="sm" variant="primary" onPress={() => navigation.navigate('Progress', { section: 'habits' })} />
+        <Button title="Full plan" size="sm" onPress={() => navigation.navigate('Plan', { section: 'plan' })} />
       </View>
     </Section>
   );
@@ -200,6 +208,8 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   readyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
   buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  pair: { flexDirection: 'row', gap: 8 },
+  flex: { flex: 1 },
   cardButtons: { paddingHorizontal: 16, paddingBottom: 14, marginTop: 4 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   ringLabels: { gap: 8, flex: 1 },

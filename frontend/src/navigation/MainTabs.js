@@ -8,15 +8,33 @@ import { PlanScreen } from '../screens/plan/PlanScreen';
 import { ProgressScreen } from '../screens/progress/ProgressScreen';
 import { TodayScreen } from '../screens/today/TodayScreen';
 import { HeaderAvatar } from './HeaderAvatar';
+import { SectionPage } from './SectionPage';
 
 const Tab = createBottomTabNavigator();
 
+/** Three-page app. Today = do it; Plan = schedule it; Progress = look back and keep habits. */
+const PLAN_SECTIONS = [
+  { value: 'plan', label: 'Plan', component: PlanScreen },
+  { value: 'homework', label: 'Homework', component: HomeworkScreen },
+];
+
+const PROGRESS_SECTIONS = [
+  { value: 'progress', label: 'Progress', component: ProgressScreen },
+  { value: 'habits', label: 'Focus & habits', component: HabitsScreen },
+];
+
+function PlanPage(props) {
+  return <SectionPage sections={PLAN_SECTIONS} label="Plan sections" {...props} />;
+}
+
+function ProgressPage(props) {
+  return <SectionPage sections={PROGRESS_SECTIONS} label="Progress sections" {...props} />;
+}
+
 const TABS = [
   { name: 'Today', component: TodayScreen, icon: 'today' },
-  { name: 'Plan', component: PlanScreen, icon: 'plan' },
-  { name: 'Progress', component: ProgressScreen, icon: 'progress' },
-  { name: 'Habits', component: HabitsScreen, icon: 'habits' },
-  { name: 'Homework', component: HomeworkScreen, icon: 'homework' },
+  { name: 'Plan', component: PlanPage, icon: 'plan' },
+  { name: 'Progress', component: ProgressPage, icon: 'progress' },
 ];
 
 const renderAvatar = () => <HeaderAvatar />;

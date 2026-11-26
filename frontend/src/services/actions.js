@@ -72,7 +72,7 @@ export const chapterActions = {
 };
 
 export const examActions = {
-  create: (body) => run(() => examsApi.create(body), { success: `${body.name} added. Tap "Fill free slots before exams" to plan revision.` }),
+  create: (body) => run(() => examsApi.create(body), { success: `${body.name} added.` }),
   update: (id, changes) => run(() => examsApi.update(id, changes), { success: (exam) => `${exam.name} saved.` }),
   async remove(exam) {
     const confirmed = await confirmAction({
@@ -82,6 +82,21 @@ export const examActions = {
     });
     if (!confirmed) return null;
     return run(() => examsApi.remove(exam.id), { success: `${exam.name} removed.` });
+  },
+  /** Adds every paper of one exam (UT 1, Half-yearly…) to the datesheet. */
+  createDatesheet: (body) =>
+    run(() => examsApi.createDatesheet(body), {
+      success: (papers) => `${body.series}: ${papers.length} paper${papers.length === 1 ? '' : 's'} on your datesheet. Tap "Fill free slots before exams" to plan revision.`,
+    }),
+  /** Removes a whole exam (every paper of one datesheet group). */
+  async removeGroup(group) {
+    const confirmed = await confirmAction({
+      title: `Remove ${group.title}?`,
+      message: `All ${group.exams.length} paper${group.exams.length === 1 ? '' : 's'} are removed from your datesheet. Study blocks you already added stay.`,
+      confirmLabel: 'Remove',
+    });
+    if (!confirmed) return null;
+    return run(() => Promise.all(group.exams.map((exam) => examsApi.remove(exam.id))), { success: `${group.title} removed.` });
   },
 };
 

@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
-import { ExamList } from '../../components/domain/ExamList';
+import { Datesheet } from '../../components/domain/Datesheet';
 import { Button } from '../../components/ui/Button';
 import { Card, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary, Banner } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
-import { examActions, planActions, taskActions } from '../../services/actions';
+import { examActions, taskActions } from '../../services/actions';
 import { resources } from '../../services/resources';
+import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { capitalize, dayName, duration, shortDate } from '../../utils/format';
 import { Timeline } from './Timeline';
@@ -36,7 +37,7 @@ export function PlanScreen({ navigation, route }) {
             <Strip days={days} value={date} onChange={setSelected} />
             {date ? <DayPlan date={date} navigation={navigation} /> : null}
             <PlanTools navigation={navigation} />
-            <UpcomingTests navigation={navigation} />
+            <DatesheetSection navigation={navigation} />
           </>
         )}
       </AsyncBoundary>
@@ -99,45 +100,46 @@ function DayDetails({ data }) {
 }
 
 function PlanTools({ navigation }) {
-  const strip = useResource(resources.planStrip);
-  const day = strip.data?.[0]?.date;
-  const daySummary = useResource(resources.planDay(day ?? 'pending'), { enabled: Boolean(day) });
-  const suggestedCount = daySummary.data?.suggestedCount ?? 0;
-  const auto = useAsyncAction(planActions.autoSchedule);
-  const acceptAll = useAsyncAction(planActions.acceptAll);
   return (
-    <>
-      <Section bare footer="Pick a chapter and choose the days for each step. Homework and tests are yours to add too.">
-        <View style={{ gap: 8 }}>
-          <Button title="Schedule from syllabus" icon="plus" variant="primary" block onPress={() => navigation.navigate('Syllabus')} testID="open-syllabus" />
-          <View style={styles.pair}>
-            <View style={styles.flex}>
-              <Button title="Homework" icon="plus" block onPress={() => navigation.navigate('NewHomework')} />
-            </View>
-            <View style={styles.flex}>
-              <Button title="Test" icon="plus" block onPress={() => navigation.navigate('NewExam')} />
-            </View>
+    <Section bare footer="Pick a chapter and choose the days for each step. Homework and exams are yours to add too.">
+      <View style={{ gap: 8 }}>
+        <Button title="Schedule from syllabus" icon="plus" variant="primary" block onPress={() => navigation.navigate('Syllabus')} testID="open-syllabus" />
+        <View style={styles.pair}>
+          <View style={styles.flex}>
+            <Button title="Homework" icon="plus" block onPress={() => navigation.navigate('NewHomework')} />
+          </View>
+          <View style={styles.flex}>
+            <Button title="Exam" icon="plus" block onPress={() => navigation.navigate('NewDatesheet', { kind: 'other' })} testID="add-exam" />
           </View>
         </View>
-      </Section>
-      <Section title="Auto schedule" meta={suggestedCount ? `${suggestedCount} waiting` : undefined} footer="Priority = deadline × grade weight × difficulty.">
-        <Muted>Fills free slots before your tests, highest priority first. You choose what stays.</Muted>
-        <View style={styles.buttons}>
-          <Button title="Fill free slots before exams" icon="spark" variant="primary" onPress={auto.execute} loading={auto.pending} testID="auto-schedule" />
-          {suggestedCount ? <Button title={`Accept all ${suggestedCount}`} onPress={acceptAll.execute} loading={acceptAll.pending} /> : null}
-        </View>
-      </Section>
-    </>
+      </View>
+    </Section>
   );
 }
 
-function UpcomingTests({ navigation }) {
+/** Every exam in one place: unit tests, half-yearly & final, and other exams, each with its syllabus. */
+function DatesheetSection({ navigation }) {
   const exams = useResource(resources.exams);
+  const subjectOf = useSubjectInfo();
   const remove = useAsyncAction(examActions.remove);
+  const removeGroup = useAsyncAction(examActions.removeGroup);
+  const busy = remove.pending || removeGroup.pending;
   const edit = (exam) => navigation.navigate('EditExam', { exam: { id: exam.id, subject: exam.subject, name: exam.name, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys } });
   return (
-    <Section title="Upcoming tests" flush>
-      <AsyncBoundary resource={exams}>{(list) => <ExamList exams={list} onEdit={edit} onRemove={remove.execute} busy={remove.pending} />}</AsyncBoundary>
+    <Section title="Datesheet" bare footer="Tap a paper to see its syllabus. Edit a paper to change its date or chapters.">
+      <AsyncBoundary resource={exams}>
+        {(list) => (
+          <Datesheet
+            exams={list}
+            subjectOf={subjectOf}
+            onAdd={(kind) => navigation.navigate('NewDatesheet', { kind })}
+            onEdit={edit}
+            onRemove={remove.execute}
+            onRemoveGroup={(group) => (group.exams.length > 1 ? removeGroup.execute(group) : remove.execute(group.exams[0]))}
+            busy={busy}
+          />
+        )}
+      </AsyncBoundary>
     </Section>
   );
 }

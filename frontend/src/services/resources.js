@@ -21,6 +21,7 @@ export const resources = {
   homeworkSummary: { key: 'homeworkSummary', load: homeworkApi.summary },
   homeworkOpen: { key: 'homeworkOpen', load: () => homeworkApi.page('open', 1, 100).then((page) => page.data) },
   bag: { key: 'bag', load: () => habitsApi.bag() },
+  allChapters: { key: 'chapters:all', load: () => chaptersApi.list() },
   chapters: (subject) => ({ key: `chapters:${subject}`, load: () => chaptersApi.list(subject) }),
   proposal: (chapterKey) => ({ key: `proposal:${chapterKey}`, load: () => chaptersApi.proposal(chapterKey) }),
   syllabusBoards: { key: 'syllabusBoards', load: syllabusApi.boards },

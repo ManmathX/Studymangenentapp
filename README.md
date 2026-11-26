@@ -1,3 +1,6 @@
+> **3-page variant.** Three tabs: **Today**, **Plan** (Plan · Homework) and **Progress** (Progress · Focus & habits), switched with a segmented control. The avatar opens Profile.
+> This copy is not tracked by git and keeps the original keys (`backend/.env`). Run only one backend at a time, or change `PORT` in `backend/.env`.
+
 # Study Planner
 
 A study planner for school students on CBSE, ICSE and state boards. Students pick their board, class and subjects (adding any the syllabus lacks), mark what has been taught, add tests and homework, and the planner lays out study blocks around school, tuition and meals, within a daily limit they choose.
@@ -15,7 +18,7 @@ There is no AI or machine learning in the app. Scheduling is deterministic (see 
 | Account | Sign in with Google (Android and iOS) or email, stay signed in (rotating refresh tokens), change password, sign out, delete the account and all its data |
 | Setup | Pick board and class, turn subjects off or add your own (name and chapters), mark chapters already taught, add and edit upcoming tests, set school timings, or load a demo student |
 | Today | Next test countdown, today's timed plan, progress rings, streak, suggestions waiting for review, heavy-day warning |
-| Plan | 14-day strip, a day laid out around school, tuition and dinner, auto-schedule before tests, accept/swap/skip suggestions, move tasks |
+| Plan | 14-day strip, a day laid out around school, tuition and dinner, move tasks |
 | Syllabus | Schedule a chapter's study steps on chosen days, update chapter status |
 | Tests | Add tests with weight and chapters, edit them, see readiness, remove tests |
 | Homework | Add homework (a task is planned the day before), mark done, delete, school-bag checklist |
@@ -142,4 +145,4 @@ Run `npm run build` in `adminwebsite/` with `VITE_API_URL` set to the HTTPS API 
 - After a password change, an account deletion or an admin role change, an access token that was already issued keeps working until it expires, at most 15 minutes.
 - Only CBSE Class 9 and 10 ship with a syllabus. Admins load other boards and classes from the admin portal.
 - Students choose their subjects at setup only; adding a subject later means starting over.
-- Editing a test keeps the study blocks already planned; auto-schedule plans around the new date and chapters.
+- Editing a test keeps the study blocks already planned.

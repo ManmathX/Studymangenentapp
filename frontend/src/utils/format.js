@@ -48,6 +48,25 @@ export function monthDay(key) {
   return `${WEEKDAYS_LONG[weekday]} ${day} ${MONTHS_LONG[month - 1]}`;
 }
 
+/** "December 2026". */
+export function monthYear(key) {
+  const { month, year } = parts(key);
+  return `${MONTHS_LONG[month - 1]} ${year}`;
+}
+
+export function shortMonth(key) {
+  return MONTHS[parts(key).month - 1];
+}
+
+/** "November 2026", "October – November 2026" or "December 2025 – January 2026". */
+export function monthRange(from, to) {
+  const a = parts(from);
+  const b = parts(to);
+  if (a.year === b.year && a.month === b.month) return `${MONTHS_LONG[a.month - 1]} ${a.year}`;
+  if (a.year === b.year) return `${MONTHS_LONG[a.month - 1]} – ${MONTHS_LONG[b.month - 1]} ${b.year}`;
+  return `${MONTHS_LONG[a.month - 1]} ${a.year} – ${MONTHS_LONG[b.month - 1]} ${b.year}`;
+}
+
 /** "today", "tomorrow", "Thursday", or "Mon 24 Nov" relative to `today`. */
 export function dayName(key, today) {
   const offset = diffDays(today, key);

@@ -34,6 +34,9 @@ export interface ProfileDocument {
   schoolStart: number;
   schoolEnd: number;
   tuitionDays: number[];
+  /** Minutes after midnight. Missing on profiles made before tuition times were adjustable. */
+  tuitionStart?: number;
+  tuitionEnd?: number;
   dailyLimitMins: number;
   weeklyGoalMins: number;
   ageMode: AgeMode;
@@ -69,6 +72,8 @@ const profileSchema = new Schema<ProfileDocument>(
     schoolStart: { type: Number, required: true, min: 0, max: 1439 },
     schoolEnd: { type: Number, required: true, min: 0, max: 1439 },
     tuitionDays: { type: [Number], default: [] },
+    tuitionStart: { type: Number, min: 0, max: 1439, default: 960 },
+    tuitionEnd: { type: Number, min: 0, max: 1439, default: 1050 },
     dailyLimitMins: { type: Number, required: true, min: 30, max: 600 },
     weeklyGoalMins: { type: Number, required: true, min: 0, max: 4200 },
     ageMode: { type: String, enum: AGE_MODES, default: 'deeper' },

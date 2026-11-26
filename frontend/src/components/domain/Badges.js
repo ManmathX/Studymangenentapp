@@ -3,15 +3,27 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSubjectInfo } from '../../store/subjectStore';
 import { chapterStatus } from '../../theme/tokens';
 import { useTheme } from '../../theme/ThemeProvider';
+import { Hatch } from './Hatch';
 
 export const StatusDot = memo(function StatusDot({ status, size = 10 }) {
   const { colors } = useTheme();
-  const color = chapterStatus[status]?.color;
+  const info = chapterStatus[status];
+  const color = info?.hatch ? null : info?.color;
   return (
     <View
-      accessibilityLabel={chapterStatus[status]?.label}
-      style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? 'transparent', borderWidth: color ? 0 : 1.5, borderColor: colors.fillStrong }}
-    />
+      accessibilityLabel={info?.label}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        overflow: 'hidden',
+        backgroundColor: color ?? 'transparent',
+        borderWidth: color ? 0 : info?.hatch ? 1 : 1.5,
+        borderColor: colors.fillStrong,
+      }}
+    >
+      {info?.hatch ? <Hatch gap={3} /> : null}
+    </View>
   );
 });
 

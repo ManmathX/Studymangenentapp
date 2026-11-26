@@ -2,8 +2,9 @@ import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { chapterStatus } from '../../theme/tokens';
+import { Hatch } from './Hatch';
 import { useTheme } from '../../theme/ThemeProvider';
-import { dayOfMonth, hours, shortDate, shortWeekday, weekdayOf } from '../../utils/format';
+import { dayOfMonth, hours, monthRange, shortDate, shortMonth, shortWeekday, weekdayOf } from '../../utils/format';
 
 /** Three concentric progress rings (tasks, focus, week), like the prototype summary. */
 export const Rings = memo(function Rings({ values, size = 124 }) {
@@ -44,7 +45,14 @@ export const CoverageBar = memo(function CoverageBar({ counts, total, height = 1
   return (
     <View style={[styles.stack, { height, backgroundColor: colors.fill }]} accessible={false}>
       {['mastered', 'revised', 'learning'].map((status) =>
-        counts[status] ? <View key={status} style={{ width: `${(counts[status] / Math.max(1, total)) * 100}%`, backgroundColor: chapterStatus[status].color }} /> : null,
+        counts[status] ? (
+          <View
+            key={status}
+            style={{ width: `${(counts[status] / Math.max(1, total)) * 100}%`, backgroundColor: chapterStatus[status].hatch ? 'transparent' : chapterStatus[status].color, overflow: 'hidden' }}
+          >
+            {chapterStatus[status].hatch ? <Hatch gap={5} /> : null}
+          </View>
+        ) : null,
       )}
     </View>
   );
@@ -88,6 +96,11 @@ export const StreakCalendar = memo(function StreakCalendar({ days, today }) {
   const fills = { study: colors.tint, rest: colors.rest, exam: 'transparent', missed: colors.fill };
   return (
     <View>
+      {days.length ? (
+        <Text style={[styles.calMonth, { color: colors.text }]} accessibilityRole="header">
+          {monthRange(days[0].date, days[days.length - 1].date)}
+        </Text>
+      ) : null}
       <View style={styles.calRow}>
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, index) => (
           <Text key={`${label}${index}`} style={[styles.calHead, { color: colors.textSecondary }]}>
@@ -102,6 +115,7 @@ export const StreakCalendar = memo(function StreakCalendar({ days, today }) {
         {days.map((day) => {
           const fill = fills[day.state];
           const strong = day.state === 'study';
+          const monthStart = dayOfMonth(day.date) === 1;
           return (
             <View key={day.date} style={styles.calCell} accessibilityLabel={`${shortDate(day.date)}: ${STATE_LABEL[day.state] ?? 'no entry yet'}`}>
               <View
@@ -112,6 +126,9 @@ export const StreakCalendar = memo(function StreakCalendar({ days, today }) {
                   day.date === today && { borderWidth: 2, borderColor: colors.danger },
                 ]}
               >
+                {monthStart ? (
+                  <Text style={[styles.calMonthTag, { color: strong ? '#fff' : colors.tint }]}>{shortMonth(day.date)}</Text>
+                ) : null}
                 <Text style={{ fontSize: 13, color: strong ? '#fff' : colors.text }}>{dayOfMonth(day.date)}</Text>
               </View>
             </View>
@@ -156,6 +173,8 @@ const styles = StyleSheet.create({
   barLabel: { fontSize: 12, height: 16 },
   goal: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1, borderStyle: 'dashed' },
   goalLabel: { position: 'absolute', right: 0, top: -9, fontSize: 11, paddingHorizontal: 4 },
+  calMonth: { fontSize: 15, fontWeight: '600', marginBottom: 10 },
+  calMonthTag: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', marginBottom: -1 },
   calRow: { flexDirection: 'row' },
   calHead: { flex: 1, textAlign: 'center', fontSize: 12, marginBottom: 6 },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },

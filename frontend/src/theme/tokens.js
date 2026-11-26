@@ -54,7 +54,7 @@ export const SUBJECT_IDS = Object.keys(subjects);
 
 export const chapterStatus = {
   not: { label: 'Not started', color: null },
-  learning: { label: 'Learning', color: '#FF9500' },
+  learning: { label: 'Learning', color: '#C7C7CC', hatch: true },
   revised: { label: 'Revised', color: '#007AFF' },
   mastered: { label: 'Mastered', color: '#34C759' },
 };
