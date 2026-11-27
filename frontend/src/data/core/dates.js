@@ -34,6 +34,33 @@ export function isValidTimeZone(timeZone) {
     return false;
   }
 }
+/** How far the zone's wall clock is ahead of UTC at the moment `ms`, in milliseconds. */
+function zoneOffset(ms, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(ms));
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')) - Math.floor(ms / 1000) * 1000;
+}
+
+/**
+ * The moment (milliseconds since 1970) when the clock in `timeZone` shows `minutes` after
+ * midnight on the day `key`. Reminders are set for these moments.
+ */
+export function instantAt(key, minutes, timeZone) {
+  const wall = toUtcMillis(key) + minutes * 60_000;
+  const guess = wall - zoneOffset(wall, timeZone);
+  // Across a daylight-saving change the offset at the answer can differ from the first guess.
+  return wall - zoneOffset(guess, timeZone);
+}
+
 /** The calendar date and hour at `now` in the given IANA time zone. */
 export function localNow(now, timeZone) {
   const parts = new Intl.DateTimeFormat('en-CA', {

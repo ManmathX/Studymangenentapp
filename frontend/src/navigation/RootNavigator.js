@@ -17,6 +17,10 @@ const lazy = {
   EditExam: () => require('../screens/modals/EditExamScreen').EditExamScreen,
   EditTask: () => require('../screens/modals/EditTaskScreen').EditTaskScreen,
   NewDatesheet: () => require('../screens/modals/NewDatesheetScreen').NewDatesheetScreen,
+  AddHoliday: () => require('../screens/modals/AddHolidayScreen').AddHolidayScreen,
+  ChangeTimings: () => require('../screens/modals/ChangeTimingsScreen').ChangeTimingsScreen,
+  Timetable: () => require('../screens/modals/TimetableScreen').TimetableScreen,
+  EditSlot: () => require('../screens/modals/EditSlotScreen').EditSlotScreen,
   DeleteAccount: () => require('../screens/account/DeleteAccountScreen').DeleteAccountScreen,
 };
 
@@ -68,6 +72,10 @@ export function RootNavigator() {
         <Stack.Screen name="EditExam" getComponent={lazy.EditExam} options={{ title: 'Edit test' }} />
         <Stack.Screen name="EditTask" getComponent={lazy.EditTask} options={{ title: 'Edit task' }} />
         <Stack.Screen name="NewDatesheet" getComponent={lazy.NewDatesheet} options={{ title: 'Add a test' }} />
+        <Stack.Screen name="AddHoliday" getComponent={lazy.AddHoliday} options={{ title: 'Add a holiday' }} />
+        <Stack.Screen name="ChangeTimings" getComponent={lazy.ChangeTimings} options={{ title: 'Change timings' }} />
+        <Stack.Screen name="Timetable" getComponent={lazy.Timetable} options={{ title: 'Timetable' }} />
+        <Stack.Screen name="EditSlot" getComponent={lazy.EditSlot} options={{ title: 'Edit slot' }} />
         <Stack.Screen name="DeleteAccount" getComponent={lazy.DeleteAccount} options={{ title: 'Delete account' }} />
       </Stack.Group>
     </Stack.Navigator>

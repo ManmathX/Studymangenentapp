@@ -70,6 +70,15 @@ describe('half-yearly and final exam plan', () => {
     }
   });
 
+  it('paces the work over the whole preparation time instead of cramming it into the first days', () => {
+    const { blocks } = plan();
+    const work = chapterBlocks(blocks);
+    const firstWeek = work.filter((block) => block.date <= addDays(TODAY, 6)).length;
+    const lastWeek = work.filter((block) => block.date >= '2026-12-07').length;
+    expect(firstWeek).toBeLessThan(work.length / 2);
+    expect(lastWeek).toBeGreaterThan(0);
+  });
+
   it('mixes subjects every day and never spends a day or a week on one chapter or subject', () => {
     const { blocks } = plan();
     const work = chapterBlocks(blocks);
@@ -110,7 +119,8 @@ describe('half-yearly and final exam plan', () => {
 
   it('works around time already planned', () => {
     const load = new DayLoad();
-    for (const date of eachDay(TODAY, '2026-11-24')) load.add({ date, mins: 500, status: 'accepted' });
+    // The first week is already full: all its Test prep time is taken.
+    for (const date of eachDay(TODAY, '2026-11-24')) load.add({ date, mins: prepCapacity(profile, date), status: 'accepted' });
     const { blocks } = plan({ load });
     expect(blocks.every((block) => block.date > '2026-11-24')).toBe(true);
   });

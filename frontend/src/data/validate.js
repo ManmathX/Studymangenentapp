@@ -47,3 +47,14 @@ export function list(value, field, { min = 0, max, message = 'Pick at least one'
 }
 
 export const unique = (values) => [...new Set(values)];
+
+/** "HH:MM" checked and turned into minutes after midnight. */
+export function timeMinutes(value, field) {
+  const [hours, minutes] = timeOfDay(value, field).split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+/** Minutes after midnight as "HH:MM", for messages. */
+export const clock24 = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

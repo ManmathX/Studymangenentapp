@@ -1,11 +1,14 @@
-import { addDays, diffDays, eachDay } from './core/dates';
+import { addDays, diffDays, eachDay, weekday } from './core/dates';
+import { EARLIEST_SESSION, weeklyClash } from './core/dayFrame';
 import { bagFor, homeworkSlotMins, MAX_HOMEWORK_MINS, nextSchoolDay, periodsFor, priority, splitHomework } from './core/engine';
-import { isSubjectPeriod, PERIOD_LABELS, ROUTINES, SUBJECTS } from './core/syllabus';
+import { ROUTINE_PARTS, routineOf } from './core/routine';
+import { isSubjectPeriod, PERIOD_LABELS, SUBJECTS } from './core/syllabus';
 import { clock } from './clock';
 import { read, write } from './db';
 import { badRequest, conflict, invalidField, notFound, unprocessable } from './errors';
-import { copy, doneMinutesByDay, focusMinutesByDay, insertTasks, logFor, newId, openHomework, studentDay, upsertLog } from './queries';
-import { dateKey, intIn, list, oneOf, optionalText, text, unique } from './validate';
+import { copy, doneMinutesByDay, focusMinutesByDay, insertTasks, logFor, newId, openHomework, studentDay, subjectName, upsertLog } from './queries';
+import { clearDailyPlanFor } from './study';
+import { clock24, dateKey, intIn, list, oneOf, optionalText, text, timeMinutes, unique, WEEKDAY_NAMES } from './validate';
 
 export const MAX_REST_DAYS_PER_WEEK = 2;
 /** Sanity bound so streaks and study hours can't be inflated by bogus sessions. */
@@ -81,7 +84,8 @@ export function createHomework(input) {
       doneOn: null,
     };
     draft.homework.push(homework);
-    const parts = splitHomework(mins, [...eachDay(today, last)], (date) => homeworkSlotMins(profile, date) - homeworkMinsOn(draft, date));
+    // Days of a half-yearly or final have no Homework slot, so homework avoids them when it can.
+    const parts = splitHomework(mins, [...eachDay(today, last)], (date) => homeworkSlotMins(profile, date, draft.exams) - homeworkMinsOn(draft, date));
     const score = priority(Math.max(1, diffDays(today, due)), HOMEWORK_WEIGHT, difficulty);
     const tasks = insertTasks(
       draft,
@@ -158,7 +162,41 @@ export function takeRestDay() {
     const weekStart = addDays(today, -6);
     const restThisWeek = Object.values(draft.dailyLogs).filter((log) => log.rest && log.date >= weekStart && log.date <= today).length;
     if (restThisWeek >= MAX_REST_DAYS_PER_WEEK) throw conflict('You have used both rest days this week', 'REST_LIMIT_REACHED');
+    clearDailyPlanFor(draft, today, { rest: true });
     return logDto(upsertLog(draft, today, { rest: true }));
+  });
+}
+
+/** How far ahead a rest day can be planned. */
+const REST_PLAN_DAYS = 60;
+
+/**
+ * Plans a rest day on the calendar (or takes it back). At most two a week (Monday to Sunday),
+ * and today only before any study. A rest day keeps its night revision but no self study or
+ * daily revision; taking it back plans the day afresh.
+ */
+export function setRestDay(date, rest) {
+  return write((draft) => {
+    const { today } = studentDay(draft);
+    dateKey(date, 'date');
+    if (date < today) throw badRequest('Pick today or a later day', 'DATE_IN_PAST');
+    if (date > addDays(today, REST_PLAN_DAYS)) throw badRequest('Pick a day in the next two months', 'DATE_OUT_OF_RANGE');
+    const resting = Boolean(logFor(draft, date)?.rest);
+    if (rest) {
+      if (resting) throw conflict('That day is already a rest day', 'ALREADY_RESTING');
+      if (date === today) {
+        const studied = (doneMinutesByDay(draft, today, today).get(today) ?? 0) + (focusMinutesByDay(draft, today, today).get(today) ?? 0);
+        if (studied > 0) throw conflict('You already studied today, so it counts as a study day', 'ALREADY_STUDIED');
+      }
+      const monday = addDays(date, -((weekday(date) + 6) % 7));
+      const sunday = addDays(monday, 6);
+      const inWeek = Object.values(draft.dailyLogs).filter((log) => log.rest && log.date >= monday && log.date <= sunday).length;
+      if (inWeek >= MAX_REST_DAYS_PER_WEEK) throw conflict('That week already has two rest days', 'REST_LIMIT_REACHED');
+    } else if (!resting) {
+      throw conflict('That day is not a rest day', 'NOT_RESTING');
+    }
+    clearDailyPlanFor(draft, date, { rest });
+    return logDto(upsertLog(draft, date, { rest }));
   });
 }
 
@@ -180,33 +218,10 @@ export function saveCheckin(input) {
 
 /* ---------- Routines ---------- */
 
-/** Routines are grouped by time of day, like the habit apps students know. */
-export const ROUTINE_PARTS = ['morning', 'afternoon', 'evening'];
+export { habitDoneOn, ROUTINE_PARTS, routineOf } from './core/routine';
 export const MAX_ROUTINE_HABITS = 24;
 const HABIT_NAME_MAX = 40;
-const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 const DEFAULT_HABIT_ICON = 'star';
-const SUGGESTED_ICONS = { morning: ['list-check', 'backpack', 'repeat'], evening: ['check-circle', 'calendar', 'target'] };
-
-/**
- * The student's routine: habits with a time of day and the weekdays they happen on (0 = Sunday).
- * Until the student customises it, the routine is the suggested study steps; their ids match the
- * ticks older versions saved (`morning-0` … `evening-2`).
- */
-export function routineOf(profile) {
-  if (Array.isArray(profile?.routine)) return profile.routine;
-  return ['morning', 'evening'].flatMap((part) =>
-    ROUTINES[part].map((name, index) => ({ id: `${part}-${index}`, name, icon: SUGGESTED_ICONS[part][index], part, days: [...EVERY_DAY], createdOn: null })),
-  );
-}
-
-/** Whether a habit was ticked on a day. Older versions saved the suggested steps as arrays of ticks. */
-export function habitDoneOn(log, id) {
-  const tick = log?.ticks?.[id];
-  if (tick !== undefined) return Boolean(tick);
-  const legacy = /^(morning|evening)-(\d)$/.exec(id);
-  return legacy ? Boolean(log?.routines?.[legacy[1]]?.[Number(legacy[2])]) : false;
-}
 
 /** The routine as stored on the profile, copied out of the defaults on the first change. */
 function editableRoutine(profile) {
@@ -220,7 +235,29 @@ function requireHabit(routine, id) {
   return habit;
 }
 
-function habitFields(input, routine, current) {
+/** Timed habits: from 04:30, finished by 23:30, 5 minutes to 3 hours long. */
+const HABIT_LATEST_END = 23 * 60 + 30;
+const HABIT_MAX_MINS = 180;
+
+/**
+ * A habit's set time, if it has one: `at` ("HH:MM", or null to clear it) and `mins`. A timed
+ * habit is a fixed block on the plan, so study is planned around it.
+ */
+function habitTime(input, current) {
+  if (input.at === undefined && input.mins === undefined) return current ? {} : { at: null, mins: null };
+  const at = input.at === undefined ? (current?.at ?? null) : input.at === null ? null : timeMinutes(input.at, 'at');
+  // Without a set time a habit can still have a length; the plan puts it in its part of the day.
+  if (at === null) {
+    const length = input.mins === undefined ? (current?.mins ?? null) : input.mins;
+    return { at: null, mins: length === null ? null : intIn(length, 5, HABIT_MAX_MINS, 'mins') };
+  }
+  const mins = intIn(input.mins === undefined ? current?.mins : input.mins, 5, HABIT_MAX_MINS, 'mins');
+  if (at < EARLIEST_SESSION) throw invalidField('at', `Start habits at ${clock24(EARLIEST_SESSION)} or later`);
+  if (at + mins > HABIT_LATEST_END) throw invalidField('mins', `Finish the habit by ${clock24(HABIT_LATEST_END)}`);
+  return { at, mins };
+}
+
+function habitFields(input, routine, current, profile) {
   const fields = {};
   if (!current || input.name !== undefined) {
     fields.name = text(input.name, 'name', { max: HABIT_NAME_MAX, required: 'Name the habit' });
@@ -236,16 +273,28 @@ function habitFields(input, routine, current) {
     // Icons are names from the app's habit icon set; anything else falls back to a star.
     fields.icon = typeof input.icon === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(input.icon) ? input.icon : DEFAULT_HABIT_ICON;
   }
+  Object.assign(fields, habitTime(input, current));
+  const at = fields.at === undefined ? current?.at : fields.at;
+  if (Number.isInteger(at)) {
+    const mins = fields.mins ?? current.mins;
+    const days = fields.days ?? current.days;
+    const name = fields.name ?? current.name;
+    const clash = weeklyClash(profile, { days, start: at, end: at + mins }, { skipHabitId: current?.id ?? null });
+    if (clash) throw invalidField('at', `${name} on ${WEEKDAY_NAMES[clash.day]} clashes with ${clash.label} (${clock24(clash.start)} to ${clock24(clash.end)})`);
+  }
   return fields;
 }
 
-/** Adds a habit (a study step, swimming, dance class, gym…) at the end of its time of day. */
+/**
+ * Adds a habit (a study step, swimming, dance class, gym…) at the end of its time of day.
+ * With `at` ("HH:MM") and `mins` it also gets a set time and blocks that time on the plan.
+ */
 export function addRoutineHabit(input = {}) {
   return write((draft) => {
     const { profile, today } = studentDay(draft);
     const routine = editableRoutine(profile);
     if (routine.length >= MAX_ROUTINE_HABITS) throw conflict(`A routine holds up to ${MAX_ROUTINE_HABITS} habits`, 'ROUTINE_FULL');
-    const habit = { id: newId(draft), ...habitFields(input, routine, null), createdOn: today };
+    const habit = { id: newId(draft), ...habitFields(input, routine, null, profile), createdOn: today };
     routine.push(habit);
     return copy(habit);
   });
@@ -257,7 +306,7 @@ export function updateRoutineHabit(id, input = {}) {
     const { profile } = studentDay(draft);
     const routine = editableRoutine(profile);
     const habit = requireHabit(routine, id);
-    const fields = habitFields(input, routine, habit);
+    const fields = habitFields(input, routine, habit, profile);
     const moved = fields.part && fields.part !== habit.part;
     Object.assign(habit, fields);
     if (moved) {
@@ -313,17 +362,46 @@ function bagIn(data, date) {
   if (day < today || day > addDays(today, BAG_DAYS_AHEAD)) throw badRequest('Pick a day in the coming week', 'DATE_OUT_OF_RANGE');
   const dueThatDay = data.homework.filter((item) => item.due === day && !item.done);
   const checked = logFor(data, day)?.bag ?? {};
-  const items = bagFor(day, dueThatDay).map((item) => ({ ...item, checked: Boolean(checked[item.id]) }));
+  const own = data.profile.periods?.[weekday(day)];
+  // The student's own class timetable when they have set one; the built-in one otherwise.
+  const items = (own ? ownBag(data.profile, own, dueThatDay) : bagFor(day, dueThatDay)).map((item) => ({ ...item, checked: Boolean(checked[item.id]) }));
   return {
     date: day,
-    periods: periodsFor(day).map((period, index) => ({
-      number: index + 1,
-      id: period,
-      label: isSubjectPeriod(period) ? SUBJECTS[period].name : PERIOD_LABELS[period],
-    })),
+    periods: own
+      ? own.map((subject, index) => ({ number: index + 1, id: subject, label: subjectName(data.profile, subject) }))
+      : periodsFor(day).map((period, index) => ({
+          number: index + 1,
+          id: period,
+          label: isSubjectPeriod(period) ? SUBJECTS[period].name : PERIOD_LABELS[period],
+        })),
     items,
     packed: items.filter((item) => item.checked).length,
   };
+}
+
+/** The bag for the student's own timetable: a textbook and notebook per subject, homework to hand in, ID card, water. */
+function ownBag(profile, periods, homeworkDue) {
+  const items = [];
+  for (const subject of [...new Set(periods)]) {
+    items.push({ id: subject, label: `${subjectName(profile, subject)} textbook and notebook` });
+    if (subject === 'maths') items.push({ id: 'geo', label: 'Geometry box' });
+  }
+  for (const homework of homeworkDue) items.push({ id: `hw-${homework.id}`, label: `Hand in: ${homework.title}` });
+  items.push({ id: 'id', label: 'School ID card' }, { id: 'water', label: 'Water bottle' });
+  return items;
+}
+
+/**
+ * In short, what goes in the bag for a day, for the evening reminder: the day's subjects (from
+ * the student's own timetable, or the built-in one) and the homework to hand in.
+ */
+export function bagSummary(data, day) {
+  const own = data.profile.periods?.[weekday(day)];
+  const subjects = own
+    ? [...new Set(own)].map((subject) => subjectName(data.profile, subject))
+    : [...new Set(periodsFor(day).filter(isSubjectPeriod))].map((period) => SUBJECTS[period].name);
+  const handIn = data.homework.filter((item) => item.due === day && !item.done).map((item) => item.title);
+  return { subjects, handIn };
 }
 
 /** Packing list for a school day (default: the next one) from the timetable and homework due. */

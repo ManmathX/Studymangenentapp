@@ -25,16 +25,19 @@ export function subjectName(profile, id) {
 
 /* ---------- The student's day ---------- */
 
-/** Today and the first day new work may be planned on (tomorrow after 19:00), on the device clock. */
-export function localToday() {
+/**
+ * Today and the first day new work may be planned on, on the device clock. From three hours
+ * before the student's stop time (19:00 for the default 22:00), new work starts tomorrow.
+ */
+export function localToday(profile) {
   const local = localNow(clock.now(), clock.timeZone());
-  return { today: local.date, start: startDay(local) };
+  return { today: local.date, start: startDay(local, profile) };
 }
 
 /** The profile plus today's date. Every planner screen needs setup to be finished first. */
 export function studentDay(data) {
   if (!data.profile) throw notFound('Finish setting up your planner first', 'ONBOARDING_REQUIRED');
-  return { profile: data.profile, ...localToday() };
+  return { profile: data.profile, ...localToday(data.profile) };
 }
 
 /* ---------- Ids ---------- */
@@ -60,10 +63,10 @@ export function liveTasksFrom(data, from) {
   return data.tasks.filter((task) => task.date >= from && task.status !== 'skipped').sort(byDateThenOrder);
 }
 
-/** Accepted, unfinished tasks dated in [from, before). */
+/** Accepted, unfinished tasks dated in [from, before). The daily plan's blocks are left out: it plans the next days afresh. */
 export function slippedTasks(data, from, before) {
   return data.tasks
-    .filter((task) => task.status === 'accepted' && !task.done && task.date >= from && task.date < before)
+    .filter((task) => task.status === 'accepted' && !task.done && !task.daily && task.date >= from && task.date < before)
     .sort(byDateThenOrder)
     .slice(0, 100);
 }

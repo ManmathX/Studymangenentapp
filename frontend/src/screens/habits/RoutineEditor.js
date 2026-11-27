@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SegmentedControl } from '../../components/ui/Controls';
+import { SegmentedControl, Stepper, ToggleRow } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { habitActions } from '../../services/actions';
 import { useTheme } from '../../theme/ThemeProvider';
+import { clockTime, duration, minutesToTime, timeToMinutes } from '../../utils/format';
 import { IconTile } from './HabitIcon';
 import { colorOfIcon, findIdea, HABIT_CATEGORIES, HABIT_LIBRARY, habitLook } from './habitLibrary';
 
@@ -32,6 +33,13 @@ const NAMED_DAYS = [
   { label: 'Weekends', days: [0, 6] },
 ];
 const sameDays = (a, b) => a.length === b.length && a.every((day) => b.includes(day));
+/** A habit with a set time blocks that time on the plan. Lengths offered, and where a new time starts by time of day. */
+const HABIT_LENGTHS = [15, 30, 45, 60, 90, 120];
+/** Habits without a set time are short; the plan puts them in their part of the day. */
+const ANY_TIME_LENGTHS = [5, 10, 15, 20, 30];
+const PART_WORDS = { morning: 'the morning, before school', afternoon: 'the afternoon, after school', evening: 'the evening, after dinner' };
+const DEFAULT_AT = { morning: '06:30', afternoon: '17:00', evening: '19:00' };
+const TIME_STEP = 15;
 const slug = (name) =>
   name
     .toLowerCase()
@@ -61,6 +69,10 @@ export function RoutineEditor({ habit, defaultPart, takenNames, onClose }) {
   const [part, setPart] = useState(habit?.part ?? defaultPart);
   const [days, setDays] = useState(habit?.days ?? EVERY_DAY);
   const [category, setCategory] = useState(startIdea?.category ?? HABIT_CATEGORIES[0].id);
+  const [timed, setTimed] = useState(Number.isInteger(habit?.at));
+  const [at, setAt] = useState(Number.isInteger(habit?.at) ? clockTime(habit.at) : DEFAULT_AT[habit?.part ?? defaultPart] ?? '17:00');
+  const [mins, setMins] = useState(habit?.mins ?? 60);
+  const [anyTimeMins, setAnyTimeMins] = useState(Number.isInteger(habit?.at) ? 5 : (habit?.mins ?? 5));
 
   const query = name.trim().toLowerCase();
   const exact = findIdea(name);
@@ -73,7 +85,7 @@ export function RoutineEditor({ habit, defaultPart, takenNames, onClose }) {
   const valid = Boolean(query) && days.length > 0;
 
   const save = useAsyncAction(async () => {
-    const body = { name: name.trim(), icon: shownIcon, part, days };
+    const body = { name: name.trim(), icon: shownIcon, part, days, ...(timed ? { at, mins } : { at: null, mins: anyTimeMins }) };
     const saved = habit ? await habitActions.updateHabit(habit.id, body) : await habitActions.addHabit(body);
     if (saved) onClose();
   });
@@ -191,6 +203,29 @@ export function RoutineEditor({ habit, defaultPart, takenNames, onClose }) {
                 </Pressable>
               );
             })}
+          </View>
+
+          <Caption right={timed ? `${at} · ${duration(mins)}` : `${duration(anyTimeMins)}, in ${part === 'morning' ? 'the morning' : part === 'afternoon' ? 'the afternoon' : 'the evening'}`}>Time</Caption>
+          <View style={[styles.card, styles.spaced, { backgroundColor: colors.card }]}>
+            <ToggleRow label="At a set time" hint="It shows on your plan, and study is planned around it." value={timed} onValueChange={setTimed} />
+            {timed ? (
+              <>
+                <Stepper
+                  label="Starts"
+                  valueLabel={at}
+                  onDecrement={() => setAt(minutesToTime(timeToMinutes(at) - TIME_STEP))}
+                  onIncrement={() => setAt(minutesToTime(timeToMinutes(at) + TIME_STEP))}
+                />
+                <View style={styles.cardPad}>
+                  <SegmentedControl label="How long" options={HABIT_LENGTHS.map((value) => ({ value, label: value < 60 ? `${value}m` : `${value / 60}h` }))} value={mins} onChange={setMins} />
+                </View>
+              </>
+            ) : (
+              <View style={styles.cardPad}>
+                <SegmentedControl label="How long" options={ANY_TIME_LENGTHS.map((value) => ({ value, label: `${value}m` }))} value={anyTimeMins} onChange={setAnyTimeMins} />
+                <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 4, marginTop: 8, paddingHorizontal: 4 }]}>It goes on your plan in {PART_WORDS[part]}, wherever there is a free moment.</Text>
+              </View>
+            )}
           </View>
 
           {habit ? (

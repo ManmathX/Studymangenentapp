@@ -2,7 +2,6 @@ import { Text } from 'react-native';
 import { useState } from 'react';
 import { SchoolDayFields } from '../../components/domain/SchoolDayFields';
 import { Button } from '../../components/ui/Button';
-import { SegmentedControl } from '../../components/ui/Controls';
 import { Muted } from '../../components/ui/Layout';
 import { profileApi } from '../../data/api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
@@ -56,8 +55,8 @@ export function SchoolDayStep() {
         exams: draft.exams.filter((exam) => subjects.includes(exam.subject)).map(({ id: _id, ...exam }) => exam),
         schoolStart: draft.schoolStart,
         schoolEnd: draft.schoolEnd,
+        saturday: draft.saturday ?? 'half',
         tuitions: tuitionsFromForm(draft.tuitions),
-        dailyLimitMins: draft.dailyLimitMins,
       });
       resetDraft();
       plannerChanged();
@@ -76,14 +75,10 @@ export function SchoolDayStep() {
     >
       <SchoolDayFields value={draft} onChange={update} />
       <Muted small>You can change these later in Profile.</Muted>
-      <FieldHeading>Most study time on a school day</FieldHeading>
-      <SegmentedControl
-        label="Daily study limit"
-        value={draft.dailyLimitMins}
-        onChange={(value) => update({ dailyLimitMins: value })}
-        options={[120, 180, 240].map((minutes) => ({ value: minutes, label: `${minutes / 60} hours` }))}
-      />
-      <Muted small>The planner warns you when a day goes over this. Sundays get 90 minutes more.</Muted>
+      <FieldHeading>Your study time</FieldHeading>
+      <Muted small>
+        All the free time around school, tuition and meals is yours to study, up to 22:00 (change it in Profile). Every day gets self study and revision from your syllabus, and every night ends with revising what school, tuition and self study covered that day.
+      </Muted>
       {error ? (
         <Text style={{ color: colors.danger }} accessibilityRole="alert">
           {error}

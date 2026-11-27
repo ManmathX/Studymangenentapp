@@ -4,10 +4,11 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { minutesToTime, timeToMinutes } from '../../utils/format';
 import { newTuition } from '../../utils/tuitions';
 import { Button } from '../ui/Button';
-import { Chip, ChipGroup, Stepper } from '../ui/Controls';
+import { Chip, ChipGroup, SegmentedControl, Stepper } from '../ui/Controls';
 import { Input } from '../ui/Field';
 import { Card, Divider, Muted } from '../ui/Layout';
 
+/** Monday first, as students read a timetable. Tuition and coaching can be on Sundays too. */
 const WEEKDAYS = [
   { day: 1, label: 'Mon' },
   { day: 2, label: 'Tue' },
@@ -15,13 +16,20 @@ const WEEKDAYS = [
   { day: 4, label: 'Thu' },
   { day: 5, label: 'Fri' },
   { day: 6, label: 'Sat' },
+  { day: 0, label: 'Sun' },
 ];
 const STEP_MINUTES = 15;
+export const SATURDAY_OPTIONS = [
+  { value: 'half', label: 'Half day' },
+  { value: 'full', label: 'Full day' },
+  { value: 'alternate', label: '2nd & 4th off' },
+  { value: 'off', label: 'Off' },
+];
 
 /**
- * School hours and the student's tuitions, each with its own name, days and times.
- * `value` is `{ schoolStart, schoolEnd, tuitions: [{ key, name, days, start, end }] }` with
- * "HH:MM" times; `onChange` gets only the fields that changed. Used at setup and in Profile.
+ * School hours, Saturdays and the student's tuitions, each with its own name, days and times.
+ * `value` is `{ schoolStart, schoolEnd, saturday, tuitions: [{ key, name, days, start, end }] }`
+ * with "HH:MM" times; `onChange` gets only the fields that changed. Used at setup and in Profile.
  */
 export function SchoolDayFields({ value, onChange }) {
   const shiftSchool = (field, delta) => onChange({ [field]: minutesToTime(timeToMinutes(value[field]) + delta) });
@@ -38,6 +46,13 @@ export function SchoolDayFields({ value, onChange }) {
         <Stepper label="School starts" valueLabel={value.schoolStart} onDecrement={() => shiftSchool('schoolStart', -STEP_MINUTES)} onIncrement={() => shiftSchool('schoolStart', STEP_MINUTES)} />
         <Divider />
         <Stepper label="School ends" valueLabel={value.schoolEnd} onDecrement={() => shiftSchool('schoolEnd', -STEP_MINUTES)} onIncrement={() => shiftSchool('schoolEnd', STEP_MINUTES)} />
+        <Divider />
+        <View style={styles.body}>
+          <Muted small style={styles.caption}>
+            Saturdays
+          </Muted>
+          <SegmentedControl label="Saturdays" options={SATURDAY_OPTIONS} value={value.saturday ?? 'half'} onChange={(saturday) => onChange({ saturday })} />
+        </View>
       </Card>
 
       {value.tuitions.map((tuition, index) => (
@@ -65,7 +80,6 @@ function TuitionCard({ tuition, index, onChange, onRemove }) {
   const shift = (field, delta) => onChange({ [field]: minutesToTime(timeToMinutes(tuition[field]) + delta) });
   const toggleDay = (day) =>
     onChange({ days: tuition.days.includes(day) ? tuition.days.filter((item) => item !== day) : [...tuition.days, day].sort((a, b) => a - b) });
-
   return (
     <Card flush>
       <View style={styles.head}>
@@ -95,4 +109,5 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 14, paddingRight: 6, paddingTop: 8 },
   title: { flex: 1, fontSize: 15, fontWeight: '700' },
   body: { paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
+  caption: { paddingTop: 10 },
 });

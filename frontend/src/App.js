@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import { createNavigationContainerRef, DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
@@ -8,9 +8,13 @@ import { persistNow } from './data/db';
 import { OfflineBanner } from './components/ui/States';
 import { Toast } from './components/ui/Toast';
 import { RootNavigator } from './navigation/RootNavigator';
+import { flushNotificationTap, startNotifications } from './services/notifications';
 import { useAuthStore } from './store/authStore';
 import { watchNetwork } from './store/networkStore';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
+
+/** Lets a tapped reminder open its screen from outside any component. */
+const navigationRef = createNavigationContainerRef();
 
 function Shell() {
   const { scheme, colors } = useTheme();
@@ -23,9 +27,12 @@ function Shell() {
       if (state !== 'active') persistNow().catch(() => {});
     });
     const stopWatching = watchNetwork();
+    // Reminders follow the plan on this phone: set after every change and opened when tapped.
+    const stopNotifications = startNotifications(navigationRef);
     return () => {
       appState.remove();
       stopWatching();
+      stopNotifications();
     };
   }, [bootstrap]);
 
@@ -38,7 +45,7 @@ function Shell() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <OfflineBanner />
       <ErrorBoundary>
-        <NavigationContainer theme={navigationTheme}>
+        <NavigationContainer ref={navigationRef} theme={navigationTheme} onReady={flushNotificationTap} onStateChange={flushNotificationTap}>
           <RootNavigator />
         </NavigationContainer>
       </ErrorBoundary>

@@ -54,15 +54,31 @@ const PLAN_SECTIONS = [
   { value: 'homework', label: 'Homework', component: HomeworkScreen },
 ];
 
+/** Focus & habits comes first; Progress (coverage, hours, tests, marks) sits behind it. */
+const HABITS_SECTIONS = [
+  { value: 'habits', label: 'Focus & habits', component: HabitsScreen },
+  { value: 'progress', label: 'Progress', component: ProgressScreen },
+];
+
 function PlanPage(props) {
   return <SectionPage sections={PLAN_SECTIONS} label="Plan sections" {...props} />;
 }
 
+function HabitsPage(props) {
+  return <SectionPage sections={HABITS_SECTIONS} label="Focus and habits sections" {...props} />;
+}
+
+/** Three tabs: Today = do it; Plan = schedule it; Focus & Habits = keep going and look back. */
 const TABS = [
-  { name: 'Today', component: TodayScreen, icon: 'today', title: 'Today' },
-  { name: 'Plan', component: PlanPage, icon: 'plan', title: 'My Plan' },
-  { name: 'Progress', component: ProgressScreen, icon: 'progress', title: 'My Progress' },
-  { name: 'Habits', component: HabitsScreen, icon: 'habits', title: 'Focus & Habits' },
+  { name: 'Today', component: TodayScreen, icon: 'today', title: () => 'Today' },
+  { name: 'Plan', component: PlanPage, icon: 'plan', title: () => 'My Plan' },
+  {
+    name: 'Habits',
+    label: 'Focus & Habits',
+    component: HabitsPage,
+    icon: 'habits',
+    title: (route) => (route.params?.section === 'progress' ? 'My Progress' : 'Focus & Habits'),
+  },
 ];
 
 /** Tab icon that sits in a soft pill and hops up a little when its tab is chosen. */
@@ -116,13 +132,13 @@ export function MainTabs() {
           key={tab.name}
           name={tab.name}
           component={tab.component}
-          options={{
-            title: tab.title,
-            headerTitle: () => <GradientTitle title={tab.title} />,
-            tabBarLabel: tab.name,
+          options={({ route }) => ({
+            title: tab.title(route),
+            headerTitle: () => <GradientTitle title={tab.title(route)} />,
+            tabBarLabel: tab.label ?? tab.name,
             tabBarIcon: ({ color, focused }) => <TabIcon name={tab.icon} color={color} focused={focused} />,
             tabBarButtonTestID: `tab-${tab.name}`,
-          }}
+          })}
         />
       ))}
     </Tab.Navigator>

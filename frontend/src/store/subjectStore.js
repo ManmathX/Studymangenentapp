@@ -3,6 +3,12 @@ import { create } from 'zustand';
 import { subjects as BUILT_IN } from '../theme/tokens';
 
 const FALLBACK = { name: 'Subject', color: '#8E8E93' };
+/** Night revision covers more than one subject: what school taught, a tuition, or the day's study. */
+const GENERAL = {
+  school: { name: 'School', color: '#06B6D4' },
+  tuition: { name: 'Tuition', color: '#A855F7' },
+  study: { name: 'Self study', color: '#5B4CF0' },
+};
 
 /**
  * Names and colours of the student's subjects. Boards and classes have their own subjects
@@ -18,7 +24,7 @@ export function setKnownSubjects(list = []) {
 
 /** `{ name, color }` for a subject id. Outside React, e.g. in stores and toasts. */
 export function subjectInfo(id, known = useSubjectStore.getState().known) {
-  return known[id] ?? BUILT_IN[id] ?? FALLBACK;
+  return known[id] ?? BUILT_IN[id] ?? GENERAL[id] ?? FALLBACK;
 }
 
 /** Same lookup for components; re-renders when the student's subjects arrive. */

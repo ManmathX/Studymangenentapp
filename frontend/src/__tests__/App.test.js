@@ -209,8 +209,9 @@ describe('the app, with the plan kept on the phone', () => {
     expect(await screen.findByText(/UT 1: 1 paper on your datesheet/)).toBeTruthy();
     const saved = await savedPlanner(MEERA);
     expect(saved.exams).toEqual([expect.objectContaining({ name: 'UT 1: Maths', subject: 'maths', seriesName: 'UT 1', kind: 'unit', chapterKeys: ['maths-1', 'maths-2'] })]);
-    expect(saved.tasks.length).toBeGreaterThan(0);
-    expect(saved.tasks.every((task) => task.examId === saved.exams[0].id)).toBe(true);
+    // The test gets its own study slots; everything else is the daily plan (self study and revision).
+    expect(saved.tasks.some((task) => task.examId === saved.exams[0].id)).toBe(true);
+    expect(saved.tasks.filter((task) => !task.daily).every((task) => task.examId === saved.exams[0].id)).toBe(true);
   });
 
   it('loads the demo student, saves a backup and starts over', async () => {
@@ -221,12 +222,13 @@ describe('the app, with the plan kept on the phone', () => {
 
     expect(await screen.findByTestId('today-screen')).toBeTruthy();
     expect(await screen.findByText(/-day streak\./)).toBeTruthy();
-    // Three tabs; Plan and Progress each hold two sections behind a segmented control.
+    // Three tabs; Plan and Focus & Habits each hold two sections behind a segmented control.
+    expect(screen.queryByTestId('tab-Progress')).toBeNull();
     for (const [tab, section, screenId] of [
       ['Plan', null, 'plan-screen'],
       ['Plan', 'Homework', 'homework-screen'],
-      ['Progress', null, 'progress-screen'],
-      ['Progress', 'Focus & habits', 'habits-screen'],
+      ['Habits', null, 'habits-screen'],
+      ['Habits', 'Progress', 'progress-screen'],
     ]) {
       await press(`tab-${tab}`);
       if (section) await fireEvent.press(await screen.findByRole('radio', { name: section }));
@@ -254,8 +256,7 @@ describe('the app, with the plan kept on the phone', () => {
     await signIn(MEERA);
     await press(await screen.findByTestId('onboarding-demo').then(() => 'onboarding-demo'));
     await screen.findByTestId('today-screen');
-    await press('tab-Progress');
-    await fireEvent.press(await screen.findByRole('radio', { name: 'Focus & habits' }));
+    await press('tab-Habits');
     await screen.findByTestId('habits-screen');
 
     expect(await screen.findByText('READY')).toBeTruthy();
@@ -371,8 +372,14 @@ describe('the app, with the plan kept on the phone', () => {
     await signIn(MEERA);
     await setUp();
     await press('tab-Plan');
-    await press(await screen.findByTestId('datesheet-add-term').then(() => 'datesheet-add-term'));
+    // The datesheet has a tab per section; Term exams holds half-yearly and final.
+    await press(await screen.findByTestId('datesheet-tab-term').then(() => 'datesheet-tab-term'));
+    await press('datesheet-add-term');
+    // "Add" offers half-yearly or final.
+    await fireEvent.press(await screen.findByText('Half-yearly'));
     expect(await screen.findByTestId('builder-paper-maths')).toBeTruthy();
+    // Half-yearly papers have their own time, starting with school by default, and study leave.
+    expect(await screen.findByTestId('builder-paper-time')).toBeTruthy();
     await press('datesheet-submit');
 
     expect(await screen.findByText(/Half-yearly: 5 papers on your datesheet/)).toBeTruthy();
@@ -392,7 +399,8 @@ describe('the app, with the plan kept on the phone', () => {
     await examsApi.create({ subject: 'maths', name: 'Maths class test', date: '2026-11-20', weight: 10, chapterKeys: ['maths-1'] });
     setClockForTests(new Date('2026-11-21T06:00:00.000Z'));
 
-    await press('tab-Progress');
+    await press('tab-Habits');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Progress' }));
     expect(await screen.findByText('Maths class test')).toBeTruthy();
     await fireEvent.press(screen.getByText('Add marks'));
     await fireEvent.changeText(await screen.findByTestId('marks-score'), '32.5');
@@ -410,6 +418,80 @@ describe('the app, with the plan kept on the phone', () => {
     await fireEvent.press(screen.getByText('45 min'));
     expect(await screen.findByText(/Homework slot set to 45 min a day/)).toBeTruthy();
     expect((await savedPlanner(MEERA)).profile.homeworkMins).toBe(45);
+  });
+
+  it('shows the month calendar, and sets Saturdays, study sessions and a holiday in Profile', async () => {
+    serverFor(MEERA);
+    await render(<App />);
+    await signIn(MEERA);
+    await setUp();
+
+    // Plan → Month: tests are on it, and tapping a day opens that day's plan.
+    await press('tab-Plan');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Month' }));
+    expect(await screen.findByTestId('month-calendar')).toBeTruthy();
+    await press('month-day-2026-11-22');
+    expect(await screen.findByText('Sunday: no school.')).toBeTruthy();
+    await press('month-next');
+    expect(await screen.findByTestId('month-day-2026-12-01')).toBeTruthy();
+
+    await openProfile();
+    await press('section-school');
+    await fireEvent.press(screen.getByText('2nd & 4th off'));
+    await press('save-timings');
+    expect(await screen.findByText(/Timings saved/)).toBeTruthy();
+    expect((await savedPlanner(MEERA)).profile.saturday).toBe('alternate');
+
+    await press('section-slots');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'My own times' }));
+    await press('save-sessions');
+    expect(await screen.findByText(/Study sessions saved/)).toBeTruthy();
+    expect((await savedPlanner(MEERA)).profile.studySessions).toEqual([{ start: 18 * 60 + 30, end: 20 * 60 }]);
+
+    await press('section-holidays');
+    await press('add-holiday');
+    await fireEvent.press(await screen.findByText('Diwali break'));
+    await press('holiday-save');
+    expect(await screen.findByText(/Diwali break added\. No school on Wed 18 Nov/)).toBeTruthy();
+    expect((await savedPlanner(MEERA)).profile.holidays).toEqual([expect.objectContaining({ name: 'Diwali break', from: '2026-11-18', to: '2026-11-18' })]);
+  });
+
+  it('shows breaks, sleep and meals on a planned day, and changes timings and rest days from the calendar', async () => {
+    serverFor(MEERA);
+    await render(<App />);
+    await signIn(MEERA);
+    await setUp();
+
+    await press('tab-Plan');
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Month' }));
+    await press(await screen.findByTestId('month-day-2026-11-22').then(() => 'month-day-2026-11-22'));
+    // Sunday is filled with self study: breaks between tasks, plus sleep, meals and night revision.
+    expect((await screen.findAllByTestId(/^(short|long)-break$/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('fixed-sleep').length).toBe(2);
+    expect(screen.getAllByTestId('fixed-meal').length).toBe(3);
+    expect(screen.getByTestId('slot-night')).toBeTruthy();
+
+    // Tap the Homework slot to move it (here: one step later, this day only).
+    await press('slot-homework');
+    expect(await screen.findByTestId('edit-slot-screen')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('More Starts at'));
+    await press('save-slot');
+    expect(await screen.findByText(/Homework moved to 09:15 for this day/)).toBeTruthy();
+    expect((await savedPlanner(MEERA)).profile.slotEdits['2026-11-22']).toEqual({ homework: { start: 555, mins: 60 } });
+
+    await press(await screen.findByTestId('toggle-rest-day').then(() => 'toggle-rest-day'));
+    expect(await screen.findByText(/is a rest day: only night revision/)).toBeTruthy();
+    expect((await savedPlanner(MEERA)).dailyLogs['2026-11-22'].rest).toBe(true);
+
+    await press('open-change-timings');
+    expect(await screen.findByTestId('change-timings-screen')).toBeTruthy();
+    await fireEvent.press(await screen.findByRole('radio', { name: 'Month' }));
+    await press('save-change-timings');
+    expect(await screen.findByText(/for this month/)).toBeTruthy();
+    // A month's change runs from today to the end of the month, with the usual school times.
+    expect((await savedPlanner(MEERA)).profile.timingChanges).toEqual([
+      expect.objectContaining({ scope: 'month', from: '2026-11-18', to: '2026-11-30', school: { start: 465, end: 825 } }),
+    ]);
   });
 
   it('adds a subject after setup from the syllabus', async () => {

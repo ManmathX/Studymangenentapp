@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.studyplanner.app",
+      "bundleIdentifier": "com.manmathx.studyplanner",
       "config": {
         "usesNonExemptEncryption": false
       }
@@ -21,7 +21,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.studyplanner.app"
+      "package": "com.manmathx.studyplanner",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -30,7 +33,15 @@
     "plugins": [
       "expo-secure-store",
       "expo-sharing",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#5B4CF0",
+          "enableRemoteNotifications": false
+        }
+      ]
     ],
     "extra": {
       "eas": {

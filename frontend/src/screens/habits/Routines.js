@@ -7,7 +7,7 @@ import { EmptyState } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { habitActions } from '../../services/actions';
 import { useTheme } from '../../theme/ThemeProvider';
-import { shortDate, shortWeekday } from '../../utils/format';
+import { clockTime, duration, shortDate, shortWeekday } from '../../utils/format';
 import { IconTile } from './HabitIcon';
 import { habitLook } from './habitLibrary';
 import { ROUTINE_PARTS, RoutineEditor, scheduleLabel } from './RoutineEditor';
@@ -130,6 +130,7 @@ export function Routines({ routine, today }) {
 function Caption({ habit }) {
   const { colors } = useTheme();
   const parts = [];
+  if (Number.isInteger(habit.at)) parts.push(`${clockTime(habit.at)} · ${duration(habit.mins)}`);
   if (!habit.scheduledToday) parts.push('Not today');
   if (habit.days.length < 7) parts.push(scheduleLabel(habit.days));
   if (habit.streak >= 2) parts.push(`${habit.streak} in a row`);
@@ -196,7 +197,10 @@ function EditRow({ habit, first, last, busy, onEdit, onMove }) {
           <Text style={[styles.name, { color: colors.text }]} numberOfLines={2}>
             {habit.name}
           </Text>
-          <Text style={[styles.caption, { color: colors.textSecondary }]}>{scheduleLabel(habit.days)}</Text>
+          <Text style={[styles.caption, { color: colors.textSecondary }]}>
+            {Number.isInteger(habit.at) ? `${clockTime(habit.at)} · ` : ''}
+            {scheduleLabel(habit.days)}
+          </Text>
         </View>
         <Icon name="pencil" size={16} color={colors.textTertiary} />
       </Pressable>

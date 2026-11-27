@@ -26,6 +26,8 @@ const initialDraft = () => ({
   exams: [],
   schoolStart: '07:45',
   schoolEnd: '13:45',
+  /** Saturdays: 'half', 'full', 'alternate' (2nd and 4th off) or 'off'. */
+  saturday: 'half',
   /** Tuition form rows (see utils/tuitions.js). */
   tuitions: [newTuition({ days: [1, 3, 5], start: '16:00', end: '17:30' })],
   dailyLimitMins: 180,

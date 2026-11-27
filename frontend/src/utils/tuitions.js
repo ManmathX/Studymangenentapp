@@ -1,6 +1,6 @@
 import { clockTime, minutesToTime, timeToMinutes } from './format';
 
-/** Tuition form rows: `{ key, name, days (1 = Monday … 6 = Saturday), start, end }`, times "HH:MM". */
+/** Tuition form rows: `{ key, name, days (0 = Sunday … 6 = Saturday), start, end }`, times "HH:MM". */
 
 const NEW_TUITION_MINUTES = 60;
 let keySeq = 0;

@@ -1,11 +1,14 @@
 import { addDays, diffDays, eachDay, weekday } from './core/dates';
+import { DAILY_PLAN_DAYS, planDailyStudy } from './core/dailyPlan';
+import { isBigPaper } from './core/dayFrame';
+import { habitDoneOn } from './core/routine';
 import {
   bestDay,
   chapterDeadline,
   DayLoad,
   layoutDay,
-  limitFor,
   planSuggestions,
+  prepExamsOn,
   priority,
   proposeDays,
   readiness,
@@ -24,6 +27,7 @@ import {
   insertTasks,
   liveHomeworkIds,
   liveTasksFrom,
+  logFor,
   newId,
   openHomework,
   requireChapter,
@@ -32,7 +36,7 @@ import {
   studentDay,
   tasksInRange,
 } from './queries';
-import { dateKey, intIn, list, oneOf, text, unique } from './validate';
+import { bool, dateKey, intIn, list, oneOf, text, timeMinutes, unique } from './validate';
 
 /** Days ahead used to judge free room when moving work between days. */
 const LOAD_WINDOW_DAYS = 45;
@@ -47,6 +51,12 @@ const MISSED_LOOKBACK_DAYS = 7;
 const maxDate = (a, b) => (a > b ? a : b);
 
 /* ---------- Tests ---------- */
+
+/**
+ * School homework has its own daily slot, so only study work competes for Test prep minutes.
+ * Homework still takes its time on the timeline, so it is kept in the load for fit checks.
+ */
+const isStudyWork = (task) => Boolean(task.examId) || (task.kind !== 'homework' && task.daily?.type !== 'night');
 
 /** Upcoming tests with days left, chapter statuses and how many are revised. */
 export function upcomingExams(data, today) {
@@ -76,21 +86,22 @@ export function planForExam(draft, exam, ctx) {
   const windowStart = addDays(exam.date, -EXAM_PREP_DAYS);
   const skipChapterKeys = new Set(
     liveTasksFrom(draft, ctx.today)
-      .filter((task) => task.chapterKey && !task.done && task.date >= windowStart && task.date < exam.date)
+      // Daily revision and self study don't count: the test still needs its own steps.
+      .filter((task) => task.chapterKey && !task.daily && !task.done && task.date >= windowStart && task.date < exam.date)
       .map((task) => task.chapterKey),
   );
-  const { blocks, reason } = planExamSlots({
+  const { blocks, reason, unplaced } = planExamSlots({
     exam,
     chapters: draft.chapters,
     profile: ctx.profile,
     // School homework has its own daily slot, so only study work competes for Test prep time.
-    load: new DayLoad(tasksInRange(draft, ctx.today, exam.date).filter((task) => task.kind !== 'homework' || task.examId)),
+    load: new DayLoad(tasksInRange(draft, ctx.today, exam.date), { exams: draft.exams, counts: isStudyWork }),
     today: ctx.today,
     start: ctx.start,
     skipChapterKeys,
   });
   insertTasks(draft, blocks.map((block) => ({ ...block, source: 'app', status: 'accepted' })));
-  return summarizeSlots(blocks, reason);
+  return summarizeSlots(blocks, reason, unplaced);
 }
 
 /** The subject must be one the student takes, and every chapter must belong to it. Returns unique keys. */
@@ -114,13 +125,16 @@ export function createExam(input) {
     const weight = intIn(input.weight, 1, 100, 'weight');
     const exam = { id: newId(draft), type: 'unit', subject: input.subject, name, date, weight, chapterKeys: keys };
     draft.exams.push(exam);
+    clearDailyStudyForTests(draft, ctx);
     return { exam: copy(exam), planned: planForExam(draft, exam, ctx) };
   });
 }
 
 /**
- * Changes a test's name, date, weight, subject or chapters. Study blocks already in the plan
- * stay; scheduling from the syllabus then plans around the new date and chapters.
+ * Changes a test's name, date, weight, subject or chapters. A half-yearly or final paper can
+ * also change its time (`paperStart`, `paperEnd`, or `paperStart: null` to clear it), and
+ * `studyLeave` for its whole exam. Study blocks already in the plan stay; scheduling from the
+ * syllabus then plans around the new date and chapters.
  */
 export function updateExam(id, patch) {
   if (!patch || !Object.keys(patch).length) throw badRequest('Send at least one field to change');
@@ -139,7 +153,21 @@ export function updateExam(id, patch) {
       patch.subject !== undefined || patch.chapterKeys !== undefined
         ? checkSubjectAndChapters(draft, profile, subject, patch.chapterKeys ?? exam.chapterKeys)
         : exam.chapterKeys;
+    const timed = patch.paperStart !== undefined || patch.paperEnd !== undefined;
+    if ((timed || patch.studyLeave !== undefined) && !isBigPaper(exam)) {
+      throw badRequest('Only half-yearly and final papers have their own time', 'NOT_A_TERM_PAPER');
+    }
     Object.assign(exam, { name, date, weight, subject, chapterKeys });
+    if (timed && patch.paperStart === null) {
+      delete exam.start;
+      delete exam.end;
+    } else if (timed) {
+      Object.assign(exam, paperTime({ paperStart: patch.paperStart, paperEnd: patch.paperEnd }));
+    }
+    if (patch.studyLeave !== undefined) {
+      const studyLeave = bool(patch.studyLeave, 'studyLeave');
+      for (const paper of draft.exams) if (paper === exam || (exam.seriesId && paper.seriesId === exam.seriesId)) paper.studyLeave = studyLeave;
+    }
     return copy(exam);
   });
 }
@@ -157,22 +185,41 @@ export function datesheetLabel(input, prefix = '') {
 }
 
 /**
- * Stored fields for the papers of one exam. Half-yearly and final papers get the exam's type
- * and a shared `prepFrom` (preparation starts weeks before the first paper); the others plan
- * like unit tests.
+ * Stored fields for the papers of one exam. Half-yearly and final papers get the exam's type,
+ * a shared `prepFrom` (preparation starts weeks before the first paper), the paper time if
+ * given (`start`, `end`: the paper replaces school that day) and `studyLeave` (no school on
+ * days between papers; on unless switched off). The others plan like unit tests.
  */
-export function datesheetPapers(draft, label, papers) {
+export function datesheetPapers(draft, label, papers, timing = {}) {
   const seriesId = newId(draft);
   const big = EXAM_SERIES[label.kind];
   const firstPaper = papers.map((paper) => paper.date).sort()[0];
+  const termFields = big
+    ? { prepFrom: addDays(firstPaper, -big.prepDays), studyLeave: timing.studyLeave ?? true, ...(timing.start !== undefined ? { start: timing.start, end: timing.end } : {}) }
+    : {};
   return papers.map((paper) => ({
     id: newId(draft),
     type: big ? label.kind : 'unit',
     seriesId,
     ...label,
-    ...(big ? { prepFrom: addDays(firstPaper, -big.prepDays) } : {}),
+    ...termFields,
     ...paper,
   }));
+}
+
+/** Half-yearly and final papers are written between 06:00 and 18:00 and last 1 to 4 hours. */
+const PAPER_EARLIEST = 6 * 60;
+const PAPER_LATEST = 18 * 60;
+
+/** A paper time from "HH:MM" `paperStart` and `paperEnd`, or `{}` when neither is given. */
+export function paperTime(input) {
+  if (input?.paperStart === undefined && input?.paperEnd === undefined) return {};
+  const start = timeMinutes(input.paperStart, 'paperStart');
+  const end = timeMinutes(input.paperEnd, 'paperEnd');
+  if (end <= start) throw invalidField('paperEnd', 'The paper has to end after it starts');
+  if (end - start < 60 || end - start > 240) throw invalidField('paperEnd', 'A paper lasts between 1 and 4 hours');
+  if (start < PAPER_EARLIEST || end > PAPER_LATEST) throw invalidField('paperStart', 'Papers are written between 06:00 and 18:00');
+  return { start, end };
 }
 
 /**
@@ -195,7 +242,7 @@ export function planPapers(draft, papers, ctx) {
       chapters: draft.chapters,
       profile,
       // School homework has its own daily slot, so only study work competes for Test prep time.
-      load: new DayLoad(tasksInRange(draft, today, lastPaper).filter((task) => task.kind !== 'homework' || task.examId)),
+      load: new DayLoad(tasksInRange(draft, today, lastPaper), { exams: draft.exams, counts: isStudyWork }),
       today,
       start: ctx.start,
       prepFrom: group[0].prepFrom,
@@ -212,9 +259,15 @@ export function planPapers(draft, papers, ctx) {
   };
 }
 
-/** Adds every paper of one exam from the student's datesheet, each with its own date, subject and syllabus, and plans them. */
+/**
+ * Adds every paper of one exam from the student's datesheet, each with its own date, subject and
+ * syllabus, and plans them. A half-yearly or final may also have a paper time (`paperStart`,
+ * `paperEnd`, "HH:MM") and `studyLeave` (only going to school for papers; on by default).
+ */
 export function createDatesheet(input) {
   const label = datesheetLabel(input);
+  const big = Boolean(EXAM_SERIES[label.kind]);
+  const timing = big ? { ...paperTime(input), ...(input.studyLeave === undefined ? {} : { studyLeave: bool(input.studyLeave, 'studyLeave') }) } : {};
   return write((draft) => {
     const ctx = studentDay(draft);
     const { profile, today } = ctx;
@@ -232,8 +285,9 @@ export function createDatesheet(input) {
       const weight = intIn(paper.weight ?? EXAM_SERIES[label.kind]?.weight ?? 20, 1, 100, field('weight'));
       return { subject: paper.subject, name, date, weight, chapterKeys };
     });
-    const stored = datesheetPapers(draft, label, valid);
+    const stored = datesheetPapers(draft, label, valid, timing);
     draft.exams.push(...stored);
+    clearDailyStudyForTests(draft, ctx);
     return { exams: stored.map(copy), planned: planPapers(draft, stored, ctx) };
   });
 }
@@ -313,6 +367,72 @@ export function blockToTask(block) {
   };
 }
 
+/* ---------- Daily plan: self study and revision every day ---------- */
+
+/**
+ * What each coming day still needs: 'full' (revision and self study), 'revision' (test-prep
+ * days), 'study' (revision is already there) or 'night' (a rest day: night revision only).
+ */
+function dailyPlanDays(data, ctx) {
+  const stored = data.dailyPlan ?? {};
+  const days = [];
+  for (const date of eachDay(ctx.start, addDays(ctx.today, DAILY_PLAN_DAYS - 1))) {
+    const needed = data.dailyLogs?.[date]?.rest ? 'rest' : prepExamsOn(data.exams, date).length ? 'revision' : 'full';
+    if (!stored[date]) days.push({ date, mode: needed === 'rest' ? 'night' : needed });
+    else if (stored[date] === 'revision' && needed === 'full') days.push({ date, mode: 'study' });
+  }
+  return days;
+}
+
+/**
+ * Makes way on a day that becomes a rest day (its open self study and daily revision go; night
+ * revision stays), or plans it afresh when it stops being one.
+ */
+export function clearDailyPlanFor(draft, date, { rest }) {
+  const stored = draft.dailyPlan ?? {};
+  const goes = (task) => task.date === date && task.daily && !task.done && (!rest || task.daily.type !== 'night');
+  draft.tasks = draft.tasks.filter((task) => !goes(task));
+  if (rest && stored[date]) stored[date] = 'rest';
+  if (!rest) delete stored[date];
+  draft.dailyPlan = stored;
+}
+
+/** True when a day in the coming week has not had its daily plan yet. */
+export function needsDailyPlan(data, ctx) {
+  return dailyPlanDays(data, ctx).length > 0;
+}
+
+/**
+ * Fills the coming week: daily revision every day, and self study filling the study slot on
+ * days without test preparation. Each day is filled once; tasks the student skips or moves
+ * are not put back.
+ */
+export function topUpDailyPlan(draft, ctx) {
+  const days = dailyPlanDays(draft, ctx);
+  if (!days.length) return summarize([]);
+  const load = new DayLoad(tasksInRange(draft, days[0].date, days.at(-1).date), { exams: draft.exams });
+  const blocks = planDailyStudy({ profile: ctx.profile, chapters: draft.chapters, tasks: draft.tasks, load, days });
+  insertTasks(draft, blocks.map((block) => ({ ...block, source: 'app', status: 'accepted' })));
+  // Remember what each day got; days more than two weeks old are forgotten.
+  const kept = Object.entries(draft.dailyPlan ?? {}).filter(([date]) => date >= addDays(ctx.today, -14));
+  const stored = { revision: 'revision', night: 'rest' };
+  draft.dailyPlan = Object.fromEntries([...kept, ...days.map(({ date, mode }) => [date, stored[mode] ?? 'full'])]);
+  return summarize(blocks);
+}
+
+/**
+ * A new test turns the days before it into test preparation: their daily self study that is
+ * still open makes way for it (daily revision stays). Removing the test later brings self
+ * study back on those days.
+ */
+function clearDailyStudyForTests(draft, ctx) {
+  const stored = draft.dailyPlan ?? {};
+  const prepDays = new Set(Object.keys(stored).filter((date) => date >= ctx.start && stored[date] === 'full' && prepExamsOn(draft.exams, date).length));
+  if (!prepDays.size) return;
+  draft.tasks = draft.tasks.filter((task) => !(task.daily?.type === 'study' && !task.done && prepDays.has(task.date)));
+  for (const date of prepDays) stored[date] = 'revision';
+}
+
 export function summarize(blocks) {
   const firstDate = blocks.reduce((first, block) => (!first || block.date < first ? block.date : first), null);
   return { added: blocks.length, firstDate };
@@ -330,7 +450,7 @@ function suggestForStudent(draft, ctx) {
     profile: ctx.profile,
     today: ctx.today,
     start: ctx.start,
-    load: new DayLoad(liveTasks),
+    load: new DayLoad(liveTasks, { exams: draft.exams }),
     homework: openHomework(draft),
     exams: examsFrom(draft, ctx.today),
     chapters: draft.chapters,
@@ -360,13 +480,13 @@ export function planStrip(from, requestedDays) {
   const first = from ?? today;
   const last = addDays(first, days - 1);
   const tasks = tasksInRange(data, first, last);
-  const load = new DayLoad(tasks);
+  const load = new DayLoad(tasks, { exams: data.exams });
   const examDates = new Set(examsFrom(data, first).map((exam) => exam.date));
   const suggestedDates = new Set(tasks.filter((task) => task.status === 'suggested').map((task) => task.date));
   return [...eachDay(first, last)].map((date) => ({
     date,
     plannedMins: load.planned(date),
-    limitMins: limitFor(profile, date),
+    limitMins: load.limit(profile, date),
     overloaded: load.isOverloaded(profile, date),
     hasExam: examDates.has(date),
     hasSuggested: suggestedDates.has(date),
@@ -379,7 +499,7 @@ function relief(load, profile, today, date, dayTasks) {
   if (!candidate) return null;
   const from = date === today ? addDays(today, 1) : today;
   const to = candidate.deadline > date ? candidate.deadline : addDays(date, 6);
-  const toDate = bestDay(load, profile, candidate.mins, from, to, date);
+  const toDate = bestDay(load, profile, candidate.mins, from, to, date, candidate);
   return toDate ? { taskId: candidate.id, title: candidate.title, toDate } : null;
 }
 
@@ -392,11 +512,12 @@ export function planDay(date) {
     throw badRequest('That day is outside the planner window', 'DATE_OUT_OF_RANGE');
   }
   const windowTasks = tasksInRange(data, date < today ? date : today, addDays(today, VIEWABLE_AHEAD_DAYS));
-  const load = new DayLoad(windowTasks);
+  const load = new DayLoad(windowTasks, { exams: data.exams });
   const dayTasks = windowTasks.filter((task) => task.date === date);
   const layout = layoutDay(profile, date, dayTasks, data.exams);
+  const { frame } = layout;
   const plannedMins = load.planned(date);
-  const limitMins = limitFor(profile, date);
+  const limitMins = frame.limit;
   const overloaded = plannedMins > limitMins;
   return {
     date,
@@ -407,15 +528,75 @@ export function planDay(date) {
     overloaded,
     tuitionDay: tuitionsOn(profile, weekday(date)).length > 0,
     // The timeline shows fixed blocks and tasks; the day's Homework and study slots are in `slots`.
+    // Habits show whether they are ticked for the day; breaks between tasks are rows too.
     rows: layout.rows
       .filter((row) => row.type !== 'slot')
-      .map((row) => (row.type === 'task' ? { type: 'task', start: row.start, end: row.end, task: copy(row.task) } : { ...row })),
+      .map((row) =>
+        row.type === 'task'
+          ? { type: 'task', start: row.start, end: row.end, task: copy(row.task) }
+          : row.kind === 'habit'
+            ? { ...row, done: habitDoneOn(logFor(data, date), row.habitId) }
+            : { ...row },
+      ),
+    rest: Boolean(logFor(data, date)?.rest),
     slots: layout.slots,
+    // What kind of day it is: school, a half day, no school (and why), study leave or an exam paper.
+    frame: copy({
+      dayType: frame.dayType,
+      reason: frame.reason,
+      papers: frame.papers,
+      tests: frame.tests,
+      examPeriod: frame.examPeriod?.name ?? null,
+      changed: frame.changed,
+      dropped: frame.dropped,
+      removed: frame.removed,
+      freeMins: frame.free,
+    }),
     overflow: layout.overflow.map(copy),
     moveSuggestion: overloaded ? relief(load, profile, today, date, dayTasks) : null,
     suggestedCount: windowTasks.filter((task) => task.status === 'suggested' && task.date >= today).length,
     dayOptions: [...eachDay(start, addDays(today, PLANNING_HORIZON_DAYS))],
   };
+}
+
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+/** How far from today the month calendar goes, in days. */
+const MONTH_RANGE_DAYS = 400;
+
+/**
+ * One month for the calendar: each day's kind (school, half day, no school, study leave, exam
+ * paper) and why, its tests and papers, whether it is in a test's preparation window, and
+ * how much is planned against its limit. `viewable` days can be opened in the day plan.
+ */
+export function planMonth(month) {
+  if (typeof month !== 'string' || !MONTH_KEY.test(month)) throw invalidField('month', 'Use YYYY-MM');
+  const data = read();
+  const { profile, today } = studentDay(data);
+  const first = `${month}-01`;
+  if (Math.abs(diffDays(today, first)) > MONTH_RANGE_DAYS) throw badRequest('That month is outside the planner window', 'DATE_OUT_OF_RANGE');
+  const last = addDays(`${addDays(first, 31).slice(0, 7)}-01`, -1);
+  const load = new DayLoad(tasksInRange(data, first, last), { exams: data.exams });
+  return [...eachDay(first, last)].map((date) => {
+    const frame = load.frame(profile, date);
+    const preparing = prepExamsOn(data.exams, date);
+    return {
+      date,
+      dayType: frame.dayType,
+      reason: frame.reason,
+      tests: data.exams
+        .filter((exam) => exam.date === date)
+        .map(({ id, name, subject, type, kind, seriesName }) => ({ id, name, subject, kind: kind ?? type, seriesName: seriesName ?? null })),
+      prep: preparing.some(isBigPaper) ? 'big' : preparing.length ? 'unit' : null,
+      examPeriod: Boolean(frame.examPeriod),
+      plannedMins: load.planned(date),
+      limitMins: frame.limit,
+      capacityMins: frame.capacity,
+      overloaded: load.isOverloaded(profile, date),
+      rest: Boolean(logFor(data, date)?.rest),
+      changed: Boolean(frame.changed),
+      viewable: date >= addDays(today, -VIEWABLE_PAST_DAYS) && date <= addDays(today, VIEWABLE_AHEAD_DAYS),
+    };
+  });
 }
 
 export function autoSchedule() {
@@ -497,7 +678,7 @@ export function scheduleProposal(key) {
   const liveTasks = liveTasksFrom(data, today);
   const steps = stepsFor(chapter);
   const { exam, deadline } = chapterDeadline(key, examsFrom(data, today), today);
-  const days = proposeDays(new DayLoad(liveTasks), profile, steps.map((step) => step.mins), deadline, today, start);
+  const days = proposeDays(new DayLoad(liveTasks, { exams: data.exams }), profile, steps.map((step) => step.mins), deadline, today, start);
   return {
     chapter: chapterDto(chapter),
     exam: exam ? { id: exam.id, name: exam.name, date: exam.date } : null,
@@ -629,6 +810,16 @@ export function updateTask(id, patch) {
         current.status = 'practiced';
         chapter = chapterDto(current);
       }
+      // A daily revision counts as the chapter's next spaced revision (1, 7 and 30 days).
+      if (current && task.daily?.type === 'revision' && current.learnedOn && current.revisions < REVISION_INTERVALS.length) {
+        current.revisions += 1;
+        chapter = chapterDto(current);
+      }
+      // Finishing the revision step of a chapter's daily self study marks it revised.
+      if (current?.status === 'practiced' && task.daily?.type === 'study' && task.kind === 'revision') {
+        current.status = 'revised';
+        chapter = chapterDto(current);
+      }
     }
     if (patch.date !== undefined) {
       for (const suggestion of draft.suggestions) if (suggestion.taskId === id && suggestion.state === 'pending') suggestion.state = 'accepted';
@@ -653,11 +844,11 @@ export function swapTask(id) {
   return write((draft) => {
     const { profile, today } = studentDay(draft);
     const task = requireTask(draft, id);
-    const load = new DayLoad(tasksInRange(draft, today, addDays(today, LOAD_WINDOW_DAYS)));
+    const load = new DayLoad(tasksInRange(draft, today, addDays(today, LOAD_WINDOW_DAYS)), { exams: draft.exams });
     const latest = task.deadline > task.date ? task.deadline : addDays(task.date, 4);
     const date =
-      bestDay(load, profile, task.mins, maxDate(addDays(task.date, 1), today), latest, task.date) ??
-      bestDay(load, profile, task.mins, today, addDays(task.date, 4), task.date);
+      bestDay(load, profile, task.mins, maxDate(addDays(task.date, 1), today), latest, task.date, task) ??
+      bestDay(load, profile, task.mins, today, addDays(task.date, 4), task.date, task);
     if (!date) throw unprocessable('No other day before the deadline has room', 'NO_ROOM');
     Object.assign(task, { date, status: 'accepted' });
     return copy(task);
@@ -669,8 +860,8 @@ export function moveTaskToBestDay(id) {
   return write((draft) => {
     const { profile, today } = studentDay(draft);
     const task = requireTask(draft, id);
-    const load = new DayLoad(tasksInRange(draft, today, addDays(today, LOAD_WINDOW_DAYS)));
-    const date = bestDay(load, profile, task.mins, today, addDays(maxDate(task.date, today), 5), task.date);
+    const load = new DayLoad(tasksInRange(draft, today, addDays(today, LOAD_WINDOW_DAYS)), { exams: draft.exams });
+    const date = bestDay(load, profile, task.mins, today, addDays(maxDate(task.date, today), 5), task.date, task);
     if (!date) throw unprocessable('No nearby day has room', 'NO_ROOM');
     task.date = date;
     return copy(task);
@@ -689,10 +880,10 @@ export function needsMoveSuggestions(data, today) {
 export function refreshMissedTasks(draft, ctx) {
   const slipped = slippedTasks(draft, addDays(ctx.today, -MISSED_LOOKBACK_DAYS), ctx.today);
   if (!slipped.length) return;
-  const load = new DayLoad(tasksInRange(draft, ctx.today, addDays(ctx.today, 7)));
+  const load = new DayLoad(tasksInRange(draft, ctx.today, addDays(ctx.today, 7)), { exams: draft.exams });
   for (const task of slipped) {
-    const date = bestDay(load, ctx.profile, task.mins, ctx.start, addDays(ctx.start, 5)) ?? ctx.start;
-    load.add({ date, mins: task.mins, status: 'suggested' });
+    const date = bestDay(load, ctx.profile, task.mins, ctx.start, addDays(ctx.start, 5), null, task) ?? ctx.start;
+    load.add({ ...task, date, status: 'suggested', order: undefined });
     if (draft.suggestions.some((item) => item.kind === 'move' && item.taskId === task.id)) continue;
     draft.suggestions.push({
       id: newId(draft),
@@ -786,8 +977,9 @@ export function swapSuggestion(id) {
     const { profile, today } = studentDay(draft);
     const suggestion = requireOpen(draft, id);
     const from = maxDate(addDays(suggestion.date, 1), today);
-    const load = new DayLoad(tasksInRange(draft, from, addDays(from, 6)));
-    const date = bestDay(load, profile, suggestion.mins, from, addDays(suggestion.date, 6)) ?? from;
+    const load = new DayLoad(tasksInRange(draft, from, addDays(from, 6)), { exams: draft.exams });
+    const asTask = { kind: suggestion.kind === 'move' ? 'revision' : suggestion.kind, examId: null };
+    const date = bestDay(load, profile, suggestion.mins, from, addDays(suggestion.date, 6), null, asTask) ?? from;
     return acceptInDraft(draft, suggestion, date);
   });
 }

@@ -18,6 +18,7 @@ export const resources = {
   profile: { key: 'profile', load: loadProfile },
   planStrip: { key: 'planStrip', load: () => planApi.strip(14) },
   planDay: (date) => ({ key: `planDay:${date}`, load: () => planApi.day(date) }),
+  planMonth: (month) => ({ key: `planMonth:${month}`, load: () => planApi.month(month) }),
   exams: { key: 'exams', load: examsApi.upcoming },
   homeworkSummary: { key: 'homeworkSummary', load: homeworkApi.summary },
   homeworkOpen: { key: 'homeworkOpen', load: () => homeworkApi.page('open', 1, 100).then((page) => page.data) },

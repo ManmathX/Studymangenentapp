@@ -6,13 +6,15 @@ import {
   DEFAULT_HOMEWORK_MINS,
   dueRevisionNudges,
   habitStreak,
+  DAY_END,
   layoutDay,
-  limitFor,
   routineSlots,
   sortDayTasks,
   streak,
   tuitionsOf,
 } from "./core/engine";
+import { afterSchoolBreakOf, mealsOf, wakeOf } from "./core/dayFrame";
+import { remindersOf } from "./core/reminderSettings";
 import { REVISION_INTERVALS } from "./core/types";
 import { clock } from "./clock";
 import { read, write } from "./db";
@@ -30,10 +32,12 @@ import {
 } from "./queries";
 import {
   chaptersWithPlans,
+  needsDailyPlan,
   needsMoveSuggestions,
   recentResults,
   refreshMissedTasks,
   suggestionsByState,
+  topUpDailyPlan,
   upcomingExams,
 } from "./study";
 
@@ -53,7 +57,7 @@ const AFTERNOON_FROM_HOUR = 12;
 const EVENING_FROM_HOUR = 18;
 
 /** Study minutes per day (finished tasks plus focus sessions), rest days and the streak. */
-function loadActivity(data, ctx) {
+export function loadActivity(data, ctx) {
   const from = addDays(ctx.today, -STREAK_LOOKBACK_DAYS);
   const taskMinutes = doneMinutesByDay(data, from, ctx.today);
   const focusMinutes = focusMinutesByDay(data, from, ctx.today);
@@ -119,6 +123,9 @@ function routineSummary(data, profile, today, lastWeek, hour) {
       name: habit.name,
       icon: habit.icon ?? null,
       part: habit.part,
+      // A set time makes the habit a fixed block on the plan.
+      at: Number.isInteger(habit.at) ? habit.at : null,
+      mins: habit.mins ?? null,
       days: [...habit.days],
       scheduledToday: scheduledOn(habit)(today),
       done: doneOn(habit)(today),
@@ -148,10 +155,14 @@ const weekMinutes = (activity, today) =>
 
 /** Today screen: next test, timed plan, rings, suggestions, heavy-day warning. */
 export function todayDashboard() {
-  // Turning slipped tasks into "move it" suggestions is the only write; skip it when there's nothing new.
+  // The only writes: slipped tasks become "move it" suggestions, and the coming week gets its
+  // daily revision and self study. Both are skipped when there's nothing new.
   const before = read();
-  if (needsMoveSuggestions(before, studentDay(before).today))
+  const beforeCtx = studentDay(before);
+  if (needsMoveSuggestions(before, beforeCtx.today))
     write((draft) => refreshMissedTasks(draft, studentDay(draft)));
+  if (needsDailyPlan(read(), beforeCtx))
+    write((draft) => topUpDailyPlan(draft, studentDay(draft)));
 
   const data = read();
   const ctx = studentDay(data);
@@ -160,7 +171,7 @@ export function todayDashboard() {
   const upcoming = upcomingExams(data, today);
   const openSuggestions = suggestionsByState(data, ["pending", "later"]);
   const activity = loadActivity(data, ctx);
-  const load = new DayLoad(windowTasks);
+  const load = new DayLoad(windowTasks, { exams: data.exams });
   const todayTasks = windowTasks.filter((task) => task.date === today);
   const layout = layoutDay(profile, today, todayTasks, data.exams);
   const startOf = new Map(
@@ -191,7 +202,7 @@ export function todayDashboard() {
     nextExam: upcoming[0] ?? null,
     upcomingExams: upcoming,
     plannedMins: load.planned(today),
-    limitMins: limitFor(profile, today),
+    limitMins: load.limit(profile, today),
     tasks: mine.map((task) => ({
       task: copy(task),
       start: startOf.get(task.id) ?? null,
@@ -210,7 +221,7 @@ export function todayDashboard() {
       ? {
           date: heavyDate,
           plannedMins: load.planned(heavyDate),
-          limitMins: limitFor(profile, heavyDate),
+          limitMins: load.limit(profile, heavyDate),
         }
       : null,
     suggestions: openSuggestions.filter((item) => item.state === "pending"),
@@ -344,6 +355,7 @@ export function sharingDashboard() {
     schoolDay: {
       schoolStart: profile.schoolStart,
       schoolEnd: profile.schoolEnd,
+      saturday: profile.saturday ?? "half",
       tuitions: tuitionsOf(profile).map(({ name, days, start, end }) => ({
         name,
         days: [...days],
@@ -352,7 +364,19 @@ export function sharingDashboard() {
       })),
     },
     todaySlots: routineSlots(profile, today, data.exams),
+    studyEnd: profile.studyEnd ?? DAY_END,
+    wakeAt: wakeOf(profile),
+    meals: mealsOf(profile),
+    afterSchoolBreakMins: afterSchoolBreakOf(profile),
+    studySessions: (profile.studySessions ?? []).map(({ start, end }) => ({
+      start,
+      end,
+    })),
+    holidays: (profile.holidays ?? [])
+      .filter((holiday) => holiday.to >= today)
+      .map(({ id, name, from, to }) => ({ id, name, from, to })),
     sharing: copy(profile.sharing),
+    reminders: remindersOf(profile),
     preview: {
       weekMins: weekMinutes(activity, today),
       weeklyGoalMins: profile.weeklyGoalMins,

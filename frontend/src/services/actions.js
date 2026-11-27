@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { useResourceStore } from '../store/resourceStore';
 import { setKnownSubjects } from '../store/subjectStore';
 import { toast } from '../store/toastStore';
-import { dayName, duration } from '../utils/format';
+import { capitalize, dayName, duration, shortDate } from '../utils/format';
 import { chapterStatus } from '../theme/tokens';
 import { confirmAction } from '../utils/confirm';
 import { backupFileName, pickBackupFile, saveBackupFile } from './backupFile';
@@ -73,6 +73,9 @@ export const chapterActions = {
 };
 
 const slotsPlanned = (count) => (count ? ` ${count} study slot${count > 1 ? 's' : ''} planned before it.` : '');
+/** Steps that did not fit are never squeezed in; the student hears about them and what to do. */
+const notPlanned = (count) =>
+  count ? ` ${count} step${count > 1 ? 's' : ''} didn’t fit in the free time before it: add a study session, stop studying later, or tick fewer chapters.` : '';
 
 export const examActions = {
   update: (id, changes) => run(() => examsApi.update(id, changes), { success: (exam) => `${exam.name} saved.` }),
@@ -90,7 +93,8 @@ export const examActions = {
   /** Adds every paper of one exam (UT 1, Half-yearly…) to the datesheet. */
   createDatesheet: (body) =>
     run(() => examsApi.createDatesheet(body), {
-      success: (result) => `${body.series}: ${result.exams.length} paper${result.exams.length === 1 ? '' : 's'} on your datesheet.${slotsPlanned(result.planned.added)}`,
+      success: (result) =>
+        `${body.series}: ${result.exams.length} paper${result.exams.length === 1 ? '' : 's'} on your datesheet.${slotsPlanned(result.planned.added)}${notPlanned(result.planned.unplaced)}`,
     }),
   /** Removes a whole exam (every paper of one datesheet group). */
   async removeGroup(group) {
@@ -130,7 +134,12 @@ export const habitActions = {
   addHabit: (body) => run(() => habitsApi.addHabit(body), { success: (habit) => `${habit.name} added to your routine.`, invalidate: ['habits'] }),
   updateHabit: (id, changes) => run(() => habitsApi.updateHabit(id, changes), { success: (habit) => `${habit.name} saved.`, invalidate: ['habits'] }),
   moveHabit: (id, direction) => run(() => habitsApi.moveHabit(id, direction), { invalidate: ['habits'] }),
-  setHabitDone: (id, done) => run(() => habitsApi.setHabitDone(id, done), { invalidate: ['habits'] }),
+  setHabitDone: (id, done) => run(() => habitsApi.setHabitDone(id, done), { invalidate: ['habits', 'planDay', 'today'] }),
+  /** Plans a rest day on the calendar, or takes it back. */
+  setRestDay: (date, rest, today) =>
+    run(() => habitsApi.setRestDay(date, rest), {
+      success: rest ? `${capitalize(dayName(date, today))} is a rest day: only night revision.` : `${capitalize(dayName(date, today))} is a study day again.`,
+    }),
   async removeHabit(habit) {
     const confirmed = await confirmAction({
       title: `Remove ${habit.name}?`,
@@ -145,6 +154,27 @@ export const habitActions = {
 
 export const profileActions = {
   update: (patch, message) => run(() => profileApi.update(patch), { success: message }),
+  /** Adds a holiday or break: no school on those days, so they plan like a Sunday. */
+  addHoliday: (body) =>
+    run(() => profileApi.addHoliday(body), {
+      success: (holiday) => `${holiday.name} added. No school ${holiday.from === holiday.to ? `on ${shortDate(holiday.from)}` : `from ${shortDate(holiday.from)} to ${shortDate(holiday.to)}`}.`,
+    }),
+  /** Changes school (or one day's tuition) timings for a day, week, month, every such weekday, or always. */
+  changeTimings: (body, message) => run(() => profileApi.changeTimings(body), { success: message }),
+  async removeTimingChange(change) {
+    const confirmed = await confirmAction({ title: 'Remove this change?', message: 'Those days follow your normal timetable again.', confirmLabel: 'Remove' });
+    if (!confirmed) return null;
+    return run(() => profileApi.removeTimingChange(change.id), { success: 'Back to the normal timetable for those days.' });
+  },
+  /** Moves, resizes or removes a slot or routine block, for one day or every day. */
+  editSlot: (body, message) => run(() => profileApi.editSlot(body), { success: message }),
+  resetSlot: (body, message) => run(() => profileApi.resetSlot(body), { success: message }),
+  resetSchoolDay: (day, name) => run(() => profileApi.resetSchoolDay(day), { success: `${name} uses your normal school times again.` }),
+  async removeHoliday(holiday) {
+    const confirmed = await confirmAction({ title: `Remove ${holiday.name}?`, message: 'Those days have school again, and your plan follows.', confirmLabel: 'Remove' });
+    if (!confirmed) return null;
+    return run(() => profileApi.removeHoliday(holiday.id), { success: `${holiday.name} removed.` });
+  },
   async addSubject(body) {
     const result = await run(() => profileApi.addSubject(body), {
       success: (subject) => `${subject.name} added with ${subject.chapters} chapter${subject.chapters > 1 ? 's' : ''}.`,

@@ -3,7 +3,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Text, View } from 'react-native';
 import { DayPicker } from '../../components/domain/DayPicker';
 import { Button } from '../../components/ui/Button';
-import { CheckRow, Chip, ChipGroup } from '../../components/ui/Controls';
+import { CheckRow, Chip, ChipGroup, Stepper, ToggleRow } from '../../components/ui/Controls';
 import { FormField } from '../../components/ui/Field';
 import { BLOCK_GAP, Card, Divider, Muted, Screen, Section } from '../../components/ui/Layout';
 import { AsyncBoundary } from '../../components/ui/States';
@@ -12,10 +12,12 @@ import { examActions } from '../../services/actions';
 import { resources } from '../../services/resources';
 import { useSubjectInfo } from '../../store/subjectStore';
 import { useTheme } from '../../theme/ThemeProvider';
-import { addDays } from '../../utils/format';
+import { addDays, clockTime, minutesToTime, timeToMinutes } from '../../utils/format';
 import { rules } from '../../utils/validation';
 
 const WEIGHTS = [5, 10, 20, 30, 50, 80];
+const TERM_TYPES = ['halfYearly', 'final'];
+const PAPER_STEP = 15;
 const DAYS_AHEAD = 60;
 
 /** Edits one paper on the datesheet (opened with `{ exam }`). New exams are added from the datesheet. */
@@ -44,20 +46,32 @@ function ExamForm({ profile, exam, onDone }) {
   const subjectOf = useSubjectInfo();
   const today = profile.today;
   const days = useMemo(() => pickableDays(today, exam.date), [today, exam.date]);
+  const termPaper = TERM_TYPES.includes(exam.type);
+  const timed = Number.isInteger(exam.start);
   const {
     control,
     handleSubmit,
     setValue,
     formState: { isSubmitting, errors },
   } = useForm({
-    defaultValues: { name: exam.name, subject: exam.subject, date: exam.date, weight: exam.weight, chapterKeys: exam.chapterKeys },
+    defaultValues: {
+      name: exam.name,
+      subject: exam.subject,
+      date: exam.date,
+      weight: exam.weight,
+      chapterKeys: exam.chapterKeys,
+      paperStart: timed ? clockTime(exam.start) : clockTime(profile.schoolStart),
+      paperEnd: timed ? clockTime(exam.end) : clockTime(profile.schoolStart + 180),
+      studyLeave: exam.studyLeave !== false,
+    },
   });
   const subject = useWatch({ control, name: 'subject' });
   const chapters = useResource(resources.chapters(subject));
   const weights = !WEIGHTS.includes(exam.weight) ? [...WEIGHTS, exam.weight].sort((a, b) => a - b) : WEIGHTS;
 
-  const onSubmit = handleSubmit(async (values) => {
-    const body = { ...values, name: values.name.trim() };
+  const onSubmit = handleSubmit(async ({ paperStart, paperEnd, studyLeave, ...values }) => {
+    // Only half-yearly and final papers have their own time and study leave.
+    const body = { ...values, name: values.name.trim(), ...(termPaper ? { paperStart, paperEnd, studyLeave } : {}) };
     const saved = await examActions.update(exam.id, body);
     if (saved) onDone();
   });
@@ -91,6 +105,33 @@ function ExamForm({ profile, exam, onDone }) {
       <Section title="Date" icon="today" bare>
         <Controller control={control} name="date" render={({ field: { value, onChange } }) => <DayPicker days={days} value={value} onChange={onChange} today={today} />} />
       </Section>
+      {termPaper ? (
+        <Section title="Paper time" icon="clock" bare footer="The paper replaces school on its day. Changing “Only go to school for papers” changes it for the whole exam.">
+          <Card flush>
+            <Controller
+              control={control}
+              name="paperStart"
+              render={({ field: { value, onChange } }) => (
+                <Stepper label="Paper starts" valueLabel={value} onDecrement={() => onChange(minutesToTime(timeToMinutes(value) - PAPER_STEP))} onIncrement={() => onChange(minutesToTime(timeToMinutes(value) + PAPER_STEP))} />
+              )}
+            />
+            <Divider />
+            <Controller
+              control={control}
+              name="paperEnd"
+              render={({ field: { value, onChange } }) => (
+                <Stepper label="Paper ends" valueLabel={value} onDecrement={() => onChange(minutesToTime(timeToMinutes(value) - PAPER_STEP))} onIncrement={() => onChange(minutesToTime(timeToMinutes(value) + PAPER_STEP))} />
+              )}
+            />
+            <Divider />
+            <Controller
+              control={control}
+              name="studyLeave"
+              render={({ field: { value, onChange } }) => <ToggleRow label="Only go to school for papers" value={value} onValueChange={onChange} />}
+            />
+          </Card>
+        </Section>
+      ) : null}
       <Section title="Weight in term grade" icon="chart" bare>
         <Controller
           control={control}

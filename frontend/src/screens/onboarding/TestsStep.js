@@ -5,8 +5,8 @@ import { Button } from '../../components/ui/Button';
 import { AsyncBoundary } from '../../components/ui/States';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { toast } from '../../store/toastStore';
-import { kindOf } from '../../utils/datesheet';
-import { localTodayKey, plural } from '../../utils/format';
+import { kindOf, sectionOf } from '../../utils/datesheet';
+import { localTodayKey, plural, timeToMinutes } from '../../utils/format';
 import { FieldHeading, StepLayout } from './StepLayout';
 import { useDraftSubjects } from './useDraftSubjects';
 
@@ -28,6 +28,12 @@ export function TestsStep({ navigation }) {
   const today = localTodayKey();
   // null: showing the datesheet. { kind } adds an exam; { kind, initial, ids } edits one.
   const [composing, setComposing] = useState(null);
+  // The datesheet tab to show after adding or editing an exam: the one that exam belongs to.
+  const [shownSection, setShownSection] = useState(undefined);
+  const compose = (next) => {
+    setShownSection(sectionOf({ kind: next.kind }));
+    setComposing(next);
+  };
 
   const subjectById = useMemo(() => new Map(chosen.map((subject) => [subject.id, subject])), [chosen]);
   const chapterNames = useMemo(() => new Map(chosen.flatMap((subject) => subject.chapters.map((chapter) => [chapter.key, chapter.name]))), [chosen]);
@@ -37,9 +43,10 @@ export function TestsStep({ navigation }) {
   const isTaught = (chapter) => Boolean(draft.taught[chapter.key]);
   const existingSeries = [...new Set(exams.map((exam) => exam.series).filter(Boolean))];
 
-  const onSubmit = async ({ series, kind, papers }) => {
+  const onSubmit = async ({ series, kind, papers, ...timing }) => {
     saveSeries(
-      papers.map((paper) => ({ id: nextDraftId(), ...paper, series, kind })),
+      // Half-yearly and final papers keep their time and study-leave choice (`timing`).
+      papers.map((paper) => ({ id: nextDraftId(), ...paper, series, kind, ...timing })),
       composing?.ids ?? [],
     );
     toast(`${series}: ${plural(papers.length, 'paper')} on your datesheet.`);
@@ -47,7 +54,7 @@ export function TestsStep({ navigation }) {
   };
 
   const editGroup = (group) =>
-    setComposing({
+    compose({
       kind: group.kind ?? 'other',
       ids: group.exams.map((exam) => exam.id),
       initial: { series: group.series ?? '', kind: group.kind ?? 'other', papers: group.exams },
@@ -65,6 +72,7 @@ export function TestsStep({ navigation }) {
               kind={composing.kind}
               initial={composing.initial ?? null}
               existingSeries={existingSeries}
+              schoolStart={timeToMinutes(draft.schoolStart ?? '07:45')}
               onSubmit={onSubmit}
               onCancel={() => setComposing(null)}
             />
@@ -87,7 +95,8 @@ export function TestsStep({ navigation }) {
         today={today}
         subjectOf={subjectOf}
         syllabusOf={syllabusOf}
-        onAdd={(kind) => setComposing({ kind })}
+        initialSection={shownSection}
+        onAdd={(kind) => compose({ kind })}
         onEditGroup={editGroup}
         onRemoveGroup={(group) => {
           removeExams(group.exams.map((exam) => exam.id));

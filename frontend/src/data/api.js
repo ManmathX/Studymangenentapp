@@ -13,11 +13,27 @@ import {
   setBagItem,
   setHabitDone,
   setHomeworkDone,
+  setRestDay,
   takeRestDay,
   updateRoutineHabit,
 } from './daily';
 import { habitsDashboard, progressDashboard, sharingDashboard, todayDashboard } from './dashboards';
-import { addSubject, getProfile, onboard, seedDemo, updateProfile, wipeAll } from './setup';
+import { focusRemindersOn, upcomingReminders } from './reminders';
+import {
+  addHoliday,
+  addSubject,
+  changeTimings,
+  editSlot,
+  getProfile,
+  onboard,
+  removeHoliday,
+  removeTimingChange,
+  resetSchoolDay,
+  resetSlot,
+  seedDemo,
+  updateProfile,
+  wipeAll,
+} from './setup';
 import {
   acceptAll,
   acceptSuggestion,
@@ -30,6 +46,7 @@ import {
   listExams,
   moveTaskToBestDay,
   planDay,
+  planMonth,
   planStrip,
   removeExam,
   saveSuggestionForLater,
@@ -63,6 +80,13 @@ export const profileApi = {
   get: op(getProfile),
   update: op(updateProfile),
   addSubject: op(addSubject),
+  addHoliday: op(addHoliday),
+  removeHoliday: op(removeHoliday),
+  changeTimings: op(changeTimings),
+  removeTimingChange: op(removeTimingChange),
+  resetSchoolDay: op(resetSchoolDay),
+  editSlot: op(editSlot),
+  resetSlot: op(resetSlot),
   wipe: op(wipeAll),
 };
 
@@ -76,6 +100,7 @@ export const dashboardApi = {
 export const planApi = {
   strip: op((days) => planStrip(undefined, days)),
   day: op(planDay),
+  month: op(planMonth),
   autoSchedule: op(autoSchedule),
   acceptAll: op(acceptAll),
 };
@@ -124,6 +149,7 @@ export const homeworkApi = {
 export const habitsApi = {
   logFocus: op(logFocus),
   takeRestDay: op(takeRestDay),
+  setRestDay: op(setRestDay),
   saveCheckin: op(saveCheckin),
   addHabit: op(addRoutineHabit),
   updateHabit: op(updateRoutineHabit),
@@ -138,4 +164,10 @@ export const backupApi = {
   export: op(exportBackup),
   parse: op(parseBackup),
   restore: op(restoreBackup),
+};
+
+/** Local reminders worked out from the plan (see data/reminders.js); services/notifications.js sets them. */
+export const remindersApi = {
+  upcoming: op(upcomingReminders),
+  focusOn: op(focusRemindersOn),
 };

@@ -1,6 +1,6 @@
 # Study Planner
 
-A study planner for school students on CBSE, ICSE and state boards, and for students preparing for competitive exams such as JEE, NEET, CUET and UPSC. Students pick their board or exam (and class or stage), their subjects (adding any the syllabus lacks), mark what has been taught, copy in their school datesheet, add homework, and the planner lays out study blocks around school, tuition and meals, within a daily limit they choose.
+A study planner for school students on CBSE, ICSE and state boards, and for students preparing for competitive exams such as JEE, NEET, CUET and UPSC. Students pick their board or exam (and class or stage), their subjects (adding any the syllabus lacks), mark what has been taught, copy in their school datesheet, add homework, and the planner fills the free time around school, tuition and meals with self study, test preparation and revision, ending every night with revision before sleep.
 
 - **`backend/`**: REST API for sign-in and the syllabus catalogue. Node.js 22, TypeScript, Express 5, MongoDB (replica set), optional Redis.
 - **`frontend/`**: mobile and web app. Expo SDK 58, React Native, React Navigation, Zustand. The planner runs on the device.
@@ -8,34 +8,35 @@ A study planner for school students on CBSE, ICSE and state boards, and for stud
 
 **Where data lives.** The server's database holds only logins (name, email, password hash, Google id, role), sign-in sessions, a security audit log, and the shared syllabus catalogue that admins edit. Everything a student enters (profile, subjects, chapters, tests, homework, tasks, focus sessions, streaks, check-ins and settings) is saved only on their phone, in one file per account in the app's documents folder (`frontend/src/data/`). Two students who share a phone each get their own file. At setup the app downloads the board's syllabus once and keeps the student's copy on the phone.
 
-There is no AI or machine learning in the app. Scheduling is deterministic and runs on the phone (see `frontend/src/data/core/engine.js`).
+There is no AI or machine learning in the app. Scheduling is deterministic and runs on the phone. Each day is built by a "day frame" (`frontend/src/data/core/dayFrame.js`): exam papers, school, tuition and timed habits are fixed blocks. Study fills all the free time around them up to the student's stop time; there is no daily limit. Every day gets self study and revision from the syllabus (`dailyPlan.js`) and ends with Night revision of what school, tuition and self study covered (`engine.js`, `examPlan.js`, `examSeries.js`). [docs/scheduling-engine.md](docs/scheduling-engine.md) explains the rules and the tests that check them for hundreds of random students.
 
 ## The app: three pages
 
-The app has three tabs. Plan and Progress each hold two sections behind a segmented control; the avatar in the header opens Profile.
+The app has three tabs: Today, Plan, and Focus & Habits. Plan and Focus & Habits each hold two sections behind a segmented control; the avatar in the header opens Profile.
 
 | Page | Sections | What it is for |
 | --- | --- | --- |
-| **Today** | | Do it: the next test, today's timed plan, suggestions waiting for review, quick add for homework and syllabus, progress rings and streak |
+| **Today** | | Do it: the next test, today's timed plan grouped by slot (Homework, Self study or Test prep, Night revision), suggestions waiting for review, progress and streak |
 | **Plan** | Plan · Homework | Schedule it: the 14-day strip and each day's timeline, the datesheet, scheduling chapters from the syllabus, homework and the school-bag checklist |
-| **Progress** | Progress · Focus & habits | Look back and keep going: coverage, study hours, test readiness and marks, weekly review; focus timer, streak, rest days, check-in, routines and revision nudges |
+| **Focus & Habits** | Focus & habits · Progress | Keep going and look back: focus timer, streak, rest days, check-in, routines and revision nudges; coverage, study hours, test readiness and marks, weekly review |
 | Profile | (from the avatar) | Stats, school and tuition timings, daily study slots, appearance, parent summary, sharing the streak, backup and restore, account |
 
-Navigation lives in `frontend/src/navigation/` (`MainTabs.js` for the tabs, `SectionPage.js` for the segmented sections, `RootNavigator.js` for sign-in, setup and modal screens). Other screens open a section with `navigation.navigate('Plan', { section: 'homework' })`.
+Navigation lives in `frontend/src/navigation/` (`MainTabs.js` for the tabs, `SectionPage.js` for the segmented sections, `RootNavigator.js` for sign-in, setup and modal screens). Other screens open a section with `navigation.navigate('Plan', { section: 'homework' })` or `navigation.navigate('Habits', { section: 'progress' })`.
 
 ## Features
 
 | Area | What a student can do |
 | --- | --- |
 | Account | Sign in (and sign up) with Google only, on Android, iOS and web; stay signed in (rotating refresh tokens), open the plan offline, sign out (the plan stays on the phone), delete the account (the login on the server and the plan on the phone). Email and password sign-in is only for admins, in the admin portal |
-| Setup | Write your name (filled in from Google, changeable later in Profile), pick a board or competitive exam from the published list (search or browse by category), then its class or stage if it has them, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours, add each tuition with its own days and times (all changeable later in Profile), or load a demo student |
-| Datesheet | Add unit tests, periodic tests, the half-yearly or final, or any other exam as one group of papers, each with its own date and syllabus. Unit tests get two weeks of preparation per paper; half-yearly and final exams get one mixed timetable across subjects starting weeks earlier. Edit or remove a paper or a whole exam, see readiness, add marks after a test |
-| Plan | 14-day strip, a day laid out around school, tuition and dinner, heavy-day warnings with a suggested move, move tasks |
+| Setup | Write your name (filled in from Google, changeable later in Profile), pick a board or competitive exam from the published list (search or browse by category), then its class or stage if it has them, turn subjects off or add your own (name and chapters), mark chapters already taught, copy in the school datesheet, set school hours and Saturdays (half day, full day, off, or 2nd and 4th off), add each tuition with its own days (Sunday too) and times (all changeable later in Profile), or load a demo student |
+| Datesheet | Add unit tests, periodic tests, the half-yearly or final, or any other exam as one group of papers, each with its own date and syllabus. Unit tests get two weeks of preparation per paper; half-yearly and final exams get one mixed timetable across subjects starting weeks earlier, a paper time (the paper replaces school that day, and there is no Homework slot until the last paper), and "Only go to school for papers" (days between papers become study leave). Papers on back-to-back days are revised the afternoon before each one. Steps that can't fit are reported, never squeezed in. Edit or remove a paper or a whole exam, see readiness, add marks after a test |
+| Plan | Week strip or month calendar (tests, paper days, preparation windows, holidays and busy days), a day laid out around exam papers, school, tuition, timed habits and meals with its slots shown (Homework, Self study or Test prep, Night revision), what kind of day it is (holiday, study leave, exam day), self study and daily revision filled in for the coming week, warnings when a day holds more than its free time, move tasks, and one tap to move work that doesn't fit |
 | Syllabus | Schedule a chapter's study steps on chosen days, update chapter status, add a subject after setup (name and chapters) |
 | Homework | Add homework (a task is planned the day before), mark done, delete, school-bag checklist |
-| Focus & habits | Focus timer logged to a subject, streak calendar, rest days (2 a week), wellbeing check-in, routines, spaced-revision nudges |
+| Focus & habits | Focus timer logged to a subject, streak calendar, rest days (2 a week, also planned ahead from the calendar), wellbeing check-in, routines (every habit shows on the calendar, at its set time or in its part of the day, and can be ticked there), spaced-revision nudges |
 | Progress | Syllabus coverage, study hours against the weekly goal, test readiness, test results with marks, weekly review of slipped tasks |
-| Profile | School hours; add, edit or remove tuitions (up to 6, each with a name, days and times); daily Homework and study slots (homework length 30 to 90 min); dark mode; a weekly parent summary sent from the phone (WhatsApp, SMS, email); share the streak with friends; save a backup file and restore it (to move to a new phone); start over |
+| Reminders | Local notifications worked out from the plan on the phone (`frontend/src/data/reminders.js`, set by `frontend/src/services/notifications.js`): before each study slot (with a Start focus button), the evening before a test or homework, asking for marks three days after a test, packing the bag after dinner before a school day, a timed habit (with Mark done), the end of a focus session or break, a streak nudge two hours before sleep, and optionally a morning plan and a Sunday weekly review. Each kind can be turned off in Profile; nothing arrives while the student sleeps, and nothing goes through the server. Android and iOS only (a development or EAS build, not the web) |
+| Profile | Sleep (wake-up and sleep time), breakfast, lunch and dinner, the break after school; the timetable (school times for each weekday, changes for a day, week or month, class periods); school hours and Saturdays; add, edit or remove tuitions (up to 6, each with a name, days and times); holidays and breaks; daily Homework and study slots (homework length 30 to 90 min, self study after homework or in up to two sessions of your own, stop time 21:00 to 23:00); reminders (each kind on or off, slot reminders on time or 5 to 15 min early); dark mode; a weekly parent summary sent from the phone (WhatsApp, SMS, email); share the streak with friends; save a backup file and restore it (to move to a new phone); start over |
 
 Admins use the **admin portal** to manage exam categories and exams (school boards and competitive exams, each with its own structure, languages, logo and settings), and to edit each exam's syllabus as drafts: subjects, units, chapters, topics and subtopics, with drag-and-drop ordering, importance, weightage, marks, CSV/JSON import and export, and copying between exams and years. Publishing a draft makes it what new students get. Students who already set up keep their own copy on their phone, so catalogue changes only affect new students. A fresh database starts with the standard CBSE and ICSE syllabus for classes 6 to 12, and NIOS, 27 state boards, JEE, NEET, CUET, UPSC, NDA and two olympiads set up with empty drafts. See [docs/exam-catalogue.md](docs/exam-catalogue.md).
 
@@ -79,8 +80,8 @@ npm run dev
 
 1. In Google Cloud console → APIs & Services → Credentials, create OAuth clients:
    - **Web application**: its client ID is the token audience.
-   - **Android**: package `com.studyplanner.app` and the SHA-1 of the signing key (`npx eas-cli@latest credentials`). Add the Play App Signing SHA-1 too if you publish to Play.
-   - **iOS** (only for iOS builds): bundle id `com.studyplanner.app`.
+   - **Android**: package `com.manmathx.studyplanner` and the SHA-1 of the signing key (`npx eas-cli@latest credentials`). Add the Play App Signing SHA-1 too if you publish to Play.
+   - **iOS** (only for iOS builds): bundle id `com.manmathx.studyplanner`.
 2. API: set `GOOGLE_CLIENT_IDS` to the web client ID (plus the iOS client ID if used). Without it, `POST /auth/google` answers 503.
 3. App: set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (and for iOS `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `GOOGLE_IOS_URL_SCHEME`) in `frontend/.env.local` and in `eas.json` for builds.
 4. On Android and iOS, Google sign-in uses native code, so it works in EAS or `expo run` builds, not Expo Go (the button is hidden there).
@@ -165,3 +166,6 @@ Run `npm run build` in `adminwebsite/` with `VITE_API_URL` set to the HTTPS API 
 - Students see topics, units and importance, but the planner schedules and tracks whole chapters.
 - After setup, students can add their own subjects, but turning a board subject back on (or off) means starting over.
 - Editing a paper keeps the study blocks already planned; schedule more from the syllabus if the date or chapters changed.
+- Changing school, tuition, habit or holiday settings re-lays out each day, but tasks keep their days. A task that no longer fits shows under "Doesn't fit today" with a button to move it.
+- Holidays are entered by the student; the app has no built-in school or state holiday calendar.
+- The class period timetable is the same every week; term-by-term changes to it have to be made by editing it.

@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { consecutiveDates, defaultChapterKeys, EXAM_KINDS, kindOf, paperName, suggestedSeriesName } from '../../utils/datesheet';
-import { addDays, plural, shortDate } from '../../utils/format';
+import { addDays, clockTime, duration, minutesToTime, plural, shortDate, timeToMinutes } from '../../utils/format';
 import { Button } from '../ui/Button';
-import { CheckRow, Chip, ChipGroup, ToggleRow } from '../ui/Controls';
+import { CheckRow, Chip, ChipGroup, Stepper, ToggleRow } from '../ui/Controls';
 import { Input } from '../ui/Field';
 import { Card, Divider } from '../ui/Layout';
 import { StatusDot, SubjectDot } from './Badges';
@@ -12,6 +12,12 @@ import { DayPicker } from './DayPicker';
 
 const DAYS_AHEAD = 180;
 const FIRST_PAPER_AHEAD = { unit: 7, periodic: 7, halfYearly: 30, final: 60, other: 7 };
+/** Half-yearly and final papers have their own time (the paper replaces school that day). */
+const TERM_KINDS = ['halfYearly', 'final'];
+const PAPER_STEP = 15;
+const DEFAULT_PAPER_MINS = 180;
+/** A paper starts when school does by default, rounded to 15 minutes. */
+const defaultPaperStart = (schoolStart) => Math.round((schoolStart ?? 9 * 60) / PAPER_STEP) * PAPER_STEP;
 
 function Heading({ children }) {
   const { colors } = useTheme();
@@ -26,9 +32,11 @@ function Heading({ children }) {
  *
  * `subjects`: [{ id, name, color, chapters: [{ key, name, status? }] }]. `isTaught(chapter)` tells
  * which chapters are done. `initial` ({ series, kind, papers }) loads an exam for editing.
- * `onSubmit({ series, kind, papers })` resolves truthy when saved.
+ * A half-yearly or final also gets its paper time (from `schoolStart`, minutes, by default) and
+ * whether school only happens for papers. `onSubmit({ series, kind, papers, paperStart?,
+ * paperEnd?, studyLeave? })` resolves truthy when saved.
  */
-export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 'unit', initial = null, existingSeries = [], onSubmit, onCancel, submitLabel }) {
+export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 'unit', initial = null, existingSeries = [], schoolStart, onSubmit, onCancel, submitLabel }) {
   const { colors } = useTheme();
   const [kindValue, setKindValue] = useState(initial?.kind ?? startKind);
   const kind = kindOf(kindValue);
@@ -44,6 +52,11 @@ export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 
     Object.fromEntries((initial?.papers ?? []).map((paper) => [paper.subject, { date: paper.date, chapterKeys: paper.chapterKeys }])),
   );
   const [open, setOpen] = useState(null);
+  const [paperStart, setPaperStart] = useState(() => clockTime(defaultPaperStart(schoolStart)));
+  const [paperEnd, setPaperEnd] = useState(() => clockTime(defaultPaperStart(schoolStart) + DEFAULT_PAPER_MINS));
+  const [studyLeave, setStudyLeave] = useState(true);
+  const termExam = TERM_KINDS.includes(kindValue);
+  const paperMins = timeToMinutes(paperEnd) - timeToMinutes(paperStart);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -84,6 +97,7 @@ export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 
     if (!series) return setError('Give this exam a name, for example "Unit test 1".');
     if (series.length > 60) return setError('Keep the name under 60 characters.');
     if (!papers.length) return setError('Switch on at least one subject.');
+    if (termExam && (paperMins < 60 || paperMins > 240)) return setError('A paper lasts between 1 and 4 hours.');
     const empty = papers.find((paper) => !paper.chapterKeys.length);
     if (empty) {
       setOpen({ subject: empty.subject.id, what: 'syllabus' });
@@ -102,6 +116,7 @@ export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 
           weight: kind.weight,
           chapterKeys: paper.chapterKeys,
         })),
+        ...(termExam ? { paperStart, paperEnd, studyLeave } : {}),
       });
     } finally {
       setSaving(false);
@@ -134,6 +149,27 @@ export function DatesheetBuilder({ subjects, today, isTaught, kind: startKind = 
       <Card flush>
         <ToggleRow label="Skip Sundays" hint="Papers follow on back-to-back days" value={skipSundays} onValueChange={(value) => { setSkipSundays(value); dropDates(); }} />
       </Card>
+
+      {termExam ? (
+        <>
+          <Heading>Paper time</Heading>
+          <Card flush testID="builder-paper-time">
+            <Stepper label="Paper starts" valueLabel={paperStart} onDecrement={() => setPaperStart(minutesToTime(timeToMinutes(paperStart) - PAPER_STEP))} onIncrement={() => setPaperStart(minutesToTime(timeToMinutes(paperStart) + PAPER_STEP))} />
+            <Divider />
+            <Stepper label="Paper ends" valueLabel={paperEnd} onDecrement={() => setPaperEnd(minutesToTime(timeToMinutes(paperEnd) - PAPER_STEP))} onIncrement={() => setPaperEnd(minutesToTime(timeToMinutes(paperEnd) + PAPER_STEP))} />
+            <Divider />
+            <ToggleRow
+              label="Only go to school for papers"
+              hint={studyLeave ? 'Days between papers have no school: they are for revision.' : 'School runs as usual on days without a paper.'}
+              value={studyLeave}
+              onValueChange={setStudyLeave}
+            />
+          </Card>
+          <Text style={{ color: colors.textSecondary, fontSize: 12.5, paddingHorizontal: 2 }}>
+            {paperMins > 0 ? `Each paper takes ${duration(paperMins)}. ` : ''}On paper days there is no school or Homework slot: the afternoon is for revising the next paper.
+          </Text>
+        </>
+      ) : null}
 
       <Heading>Papers and syllabus</Heading>
       <Card flush>

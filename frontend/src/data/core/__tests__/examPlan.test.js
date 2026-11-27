@@ -1,6 +1,7 @@
 import { addDays } from '../dates';
 import { DayLoad, limitFor } from '../engine';
-import { EXAM_PREP_DAYS, examStepsFor, planExamSlots, summarizeSlots } from '../examPlan';
+import { dayFrame } from '../dayFrame';
+import { EXAM_PREP_DAYS, examStepsFor, planExamSlots, prepCapacity, summarizeSlots } from '../examPlan';
 
 const profile = { dailyLimitMins: 180, ageMode: 'deeper', examSeason: false, tuitionDays: [1, 3, 5], schoolStart: 465, schoolEnd: 825 };
 const TODAY = '2026-11-18';
@@ -60,19 +61,42 @@ describe('unit test slots', () => {
     }
   });
 
-  it('still plans everything when days are full, on the least busy days', () => {
+  it('uses the one day that still has room, and reports what does not fit instead of overloading full days', () => {
     const load = new DayLoad();
-    for (let offset = 0; offset < 10; offset += 1) load.add({ date: addDays(TODAY, offset), mins: 300, status: 'accepted' });
-    load.add({ date: '2026-11-22', mins: -200, status: 'accepted' });
-    const { blocks } = plan({ load });
-    expect(blocks).toHaveLength(6);
+    // Every day's Test prep time is taken, except 100 minutes on Sunday 22 Nov.
+    for (let offset = 0; offset < 10; offset += 1) {
+      const date = addDays(TODAY, offset);
+      load.add({ date, mins: prepCapacity(profile, date) - (date === '2026-11-22' ? 100 : 0), status: 'accepted' });
+    }
+    const { blocks, unplaced } = plan({ load });
     expect(blocks.find((block) => block.kind === 'study').date).toBe('2026-11-22');
+    expect(blocks.length + unplaced).toBe(6);
+    expect(unplaced).toBeGreaterThan(0);
+    // No full day was pushed further over its limit.
+    for (const block of blocks) expect(block.date).toBe('2026-11-22');
+  });
+
+  it('never plans more than a day’s free time, even when every day is full', () => {
+    const load = new DayLoad();
+    for (let offset = 0; offset < 10; offset += 1) {
+      const date = addDays(TODAY, offset);
+      load.add({ date, mins: prepCapacity(profile, date), status: 'accepted' });
+    }
+    const { blocks, unplaced } = plan({ load });
+    expect(blocks).toEqual([]);
+    expect(unplaced).toBe(6);
+    for (let offset = 0; offset < 10; offset += 1) {
+      const date = addDays(TODAY, offset);
+      expect(load.planned(date, true)).toBeLessThanOrEqual(dayFrame(profile, date).free);
+    }
   });
 
   it('says there is no time when the test is too close', () => {
-    expect(plan({ testDate: '2026-11-19', start: '2026-11-19' })).toEqual({ blocks: [], reason: 'NO_TIME' });
+    expect(plan({ testDate: '2026-11-19', start: '2026-11-19' })).toEqual({ blocks: [], reason: 'NO_TIME', unplaced: 0 });
     const tomorrow = plan({ testDate: '2026-11-19' });
     expect(tomorrow.blocks.every((block) => block.date === TODAY)).toBe(true);
+    // Whatever goes on this evening fits in its free time after the Homework slot.
+    expect(tomorrow.blocks.reduce((sum, block) => sum + block.mins, 0)).toBeLessThanOrEqual(prepCapacity(profile, TODAY));
   });
 
   it('leaves out chapters that are already planned', () => {
@@ -83,6 +107,6 @@ describe('unit test slots', () => {
 
   it('summarises slots for the confirmation message', () => {
     const { blocks } = plan();
-    expect(summarizeSlots(blocks)).toEqual({ added: 6, firstDate: TODAY, counts: { study: 1, homework: 2, revision: 3 }, reason: null });
+    expect(summarizeSlots(blocks)).toEqual({ added: 6, firstDate: TODAY, counts: { study: 1, homework: 2, revision: 3 }, reason: null, unplaced: 0 });
   });
 });

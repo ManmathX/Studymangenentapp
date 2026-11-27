@@ -1,37 +1,65 @@
 // Originally ported from the retired backend's planner.engine.ts. This copy is now the source of truth.
 import { addDays, diffDays, eachDay, weekday } from './dates';
+import { dayFrame, MIN_GAP_MINS, studyEndOf, subtract } from './dayFrame';
 import { shortDate } from './shortDate';
 import { BAG_EXTRAS, isSubjectPeriod, SUBJECTS, TIMETABLE } from './syllabus';
 import { EXAM_PREP_DAYS, PLANNING_HORIZON_DAYS, REVISION_INTERVALS } from './types';
-const DEFAULT_LIMIT = 180;
-const SIMPLE_MODE_CAP = 120;
-const SUNDAY_BONUS = 90;
-const TUITION_PENALTY = 30;
-const EXAM_SEASON_BONUS = 45;
-const DAY_END = 22 * 60;
-const BREAK_BETWEEN_TASKS = 10;
-/** After this local hour, new work is planned from tomorrow. */
-const EVENING_CUTOFF_HOUR = 19;
+
+// School, tuition, limits and the day frame live in dayFrame.js; these names stay importable from here.
+export {
+  DAY_END,
+  dayFrame,
+  DEFAULT_TUITION_END,
+  DEFAULT_TUITION_START,
+  limitFor,
+  MAX_TUITIONS,
+  SATURDAY_MODES,
+  schoolHours,
+  TUITION_EARLIEST,
+  TUITION_LATEST,
+  tuitionLabel,
+  tuitionsOf,
+  tuitionsOn,
+} from './dayFrame';
+
+/** A short break after each study task, and a longer one after about 90 minutes of study in a row. */
+export const SHORT_BREAK_MINS = 10;
+export const LONG_BREAK_MINS = 20;
+export const LONG_BREAK_AFTER_MINS = 90;
+/** New work is planned from tomorrow once it is this close to the student's stop time. */
+const EVENING_CUTOFF_BEFORE_END = 3 * 60;
+
 /* ---------- Daily limits and load ---------- */
-/** Most minutes of study the student wants on a given day. */
-export function limitFor(profile, date) {
-  let base = profile.dailyLimitMins || DEFAULT_LIMIT;
-  if (profile.ageMode === 'simple') base = Math.min(base, SIMPLE_MODE_CAP);
-  const day = weekday(date);
-  if (day === 0) base += SUNDAY_BONUS;
-  else if (tuitionsOn(profile, day).length) base -= TUITION_PENALTY;
-  if (profile.examSeason) base += EXAM_SEASON_BONUS;
-  return base;
-}
-/** Running totals of planned minutes per day. Skipped tasks never count. */
+
+/** Orders for tasks the planner is still trying out: after every stored task of the day. */
+const TRIAL_ORDER = 1e12;
+
+/**
+ * Running totals of planned minutes per day, and the tasks behind them. Skipped tasks never
+ * count. Pass the student's `exams` so exam days and study leave are known (each day's frame
+ * is worked out once), and `counts` to leave some tasks out of the minutes (for example
+ * school homework, which has its own slot) while still keeping them on the day's timeline.
+ */
 export class DayLoad {
   accepted = new Map();
   suggested = new Map();
-  constructor(tasks = []) {
+  frames = new WeakMap();
+  tasksByDate = new Map();
+  trials = 0;
+  constructor(tasks = [], { exams = [], counts = () => true } = {}) {
+    this.exams = exams;
+    this.counts = counts;
     for (const task of tasks) this.add(task);
   }
   add(task) {
     if (task.status === 'skipped') return;
+    // Entries with a kind are real tasks (or planned ones) and take time on the timeline.
+    if (task.kind) {
+      const list = this.tasksByDate.get(task.date) ?? [];
+      list.push(task.order === undefined ? { ...task, order: TRIAL_ORDER + (this.trials += 1) } : task);
+      this.tasksByDate.set(task.date, list);
+    }
+    if (!this.counts(task)) return;
     const bucket = task.status === 'accepted' ? this.accepted : this.suggested;
     bucket.set(task.date, (bucket.get(task.date) ?? 0) + task.mins);
   }
@@ -39,107 +67,74 @@ export class DayLoad {
     const accepted = this.accepted.get(date) ?? 0;
     return includeSuggested ? accepted + (this.suggested.get(date) ?? 0) : accepted;
   }
+  /** The day's frame (fixed blocks, free time, limit, capacity) for this student. */
+  frame(profile, date) {
+    let byDate = this.frames.get(profile);
+    if (!byDate) {
+      byDate = new Map();
+      this.frames.set(profile, byDate);
+    }
+    if (!byDate.has(date)) byDate.set(date, dayFrame(profile, date, this.exams));
+    return byDate.get(date);
+  }
+  limit(profile, date) {
+    return this.frame(profile, date).limit;
+  }
+  /** Minutes still free on a day: never more than its limit or the time it really has. */
   room(profile, date) {
-    return limitFor(profile, date) - this.planned(date, true);
+    return this.frame(profile, date).capacity - this.planned(date, true);
   }
   isOverloaded(profile, date) {
-    return this.planned(date) > limitFor(profile, date);
+    return this.planned(date) > this.limit(profile, date);
+  }
+  /**
+   * Whether `task` (`{ kind, mins, examId?, daily? }`) still fits in its own slot on the day's
+   * timeline, after what is already there and with a break before it: minutes alone can't
+   * tell, because free time comes in separate stretches. Self study must fit in a study slot,
+   * night revision in the night slot, and so on, so planned days keep their shape.
+   */
+  fits(profile, date, task) {
+    const trial = { status: 'accepted', score: 0, examId: null, ...task, id: '__trial', date, order: TRIAL_ORDER * 2 };
+    const frame = this.frame(profile, date);
+    const slots = routineSlots(profile, date, this.exams, frame);
+    const { overflow } = placeTasks(frame, slots, sortDayTasks([...(this.tasksByDate.get(date) ?? []), trial]), false, trial);
+    return !overflow.includes(trial);
   }
 }
-/** Day with the most spare room that still fits `mins`, or null. */
-export function bestDay(load, profile, mins, from, to, exclude) {
+/** Day with the most spare room that still fits `mins` (and, if given, `task` on its timeline), or null. */
+export function bestDay(load, profile, mins, from, to, exclude, task = null) {
   let best = null;
   let spare = -1;
   for (const date of eachDay(from, to)) {
     if (date === exclude) continue;
     const room = load.room(profile, date);
-    if (room >= mins && room > spare) {
+    if (room >= mins && room > spare && (!task || load.fits(profile, date, { ...task, mins }))) {
       best = date;
       spare = room;
     }
   }
   return best;
 }
-/** Earliest day that still fits `mins`, or null. */
-export function firstDay(load, profile, mins, from, to) {
-  for (const date of eachDay(from, to)) if (load.room(profile, date) >= mins) return date;
+/** Earliest day that still fits `mins` (and, if given, `task` on its timeline), or null. */
+export function firstDay(load, profile, mins, from, to, task = null) {
+  for (const date of eachDay(from, to)) if (load.room(profile, date) >= mins && (!task || load.fits(profile, date, { ...task, mins }))) return date;
   return null;
 }
-export function startDay(local) {
-  return local.hour < EVENING_CUTOFF_HOUR ? local.date : addDays(local.date, 1);
+/** Today, or tomorrow once it is within three hours of the student's stop time (19:00 by default). */
+export function startDay(local, profile) {
+  const cutoffHour = Math.floor((studyEndOf(profile) - EVENING_CUTOFF_BEFORE_END) / 60);
+  return local.hour < cutoffHour ? local.date : addDays(local.date, 1);
 }
 /** Priority = urgency × grade weight × difficulty, rounded to one decimal. */
 export function priority(daysLeft, weight, difficulty) {
   return Math.round((10 / Math.max(1, daysLeft)) * (weight / 10) * difficulty * 10) / 10;
 }
 /* ---------- Day timeline ---------- */
-/** Plans saved before tuition times were editable had one tuition, 16:00 to 17:30. */
-export const DEFAULT_TUITION_START = 16 * 60;
-export const DEFAULT_TUITION_END = 17 * 60 + 30;
-/** Earliest and latest a tuition class can be (morning tuition before school is common). */
-export const TUITION_EARLIEST = 5 * 60;
-export const TUITION_LATEST = DAY_END;
-export const MAX_TUITIONS = 6;
 
-/**
- * The student's tuitions: `{ name, days (1 = Monday … 6 = Saturday), start, end }`, times in
- * minutes after midnight. Plans saved earlier had one set of tuition days and one time.
- */
-export function tuitionsOf(profile) {
-  if (Array.isArray(profile.tuitions)) return profile.tuitions;
-  if (!profile.tuitionDays?.length) return [];
-  return [
-    {
-      name: '',
-      days: profile.tuitionDays,
-      start: profile.tuitionStart ?? DEFAULT_TUITION_START,
-      end: profile.tuitionEnd ?? DEFAULT_TUITION_END,
-    },
-  ];
-}
-
-/** Tuitions on a weekday, earliest first. */
-export function tuitionsOn(profile, day) {
-  return tuitionsOf(profile)
-    .filter((tuition) => tuition.days.includes(day))
-    .sort((a, b) => a.start - b.start);
-}
-
-export const tuitionLabel = (tuition) => tuition.name || 'Tuition';
-
-/** School hours on a weekday (1 = Monday … 6 = Saturday). Saturday is a half day. */
-export function schoolHours(profile, day) {
-  const start = profile.schoolStart;
-  return { start, end: day === 6 ? Math.min(profile.schoolEnd, start + 285) : profile.schoolEnd };
-}
-
-export function fixedBlocks(profile, date) {
-  const day = weekday(date);
-  if (day === 0) {
-    return {
-      start: 9 * 60,
-      end: DAY_END,
-      blocks: [
-        { start: 13 * 60, end: 15 * 60, label: 'Lunch and rest', kind: 'rest' },
-        { start: 20 * 60, end: 20 * 60 + 45, label: 'Dinner with family', kind: 'rest' },
-      ],
-    };
-  }
-  const school = schoolHours(profile, day);
-  const blocks = [
-    {
-      start: school.start,
-      end: school.end,
-      label: day === 6 ? 'School (half day)' : 'School',
-      kind: 'school',
-    },
-    { start: school.end, end: school.end + 75, label: 'Lunch and rest', kind: 'rest' },
-  ];
-  for (const tuition of tuitionsOn(profile, day)) {
-    blocks.push({ start: tuition.start, end: tuition.end, label: tuitionLabel(tuition), kind: 'tuition' });
-  }
-  blocks.push({ start: 20 * 60, end: 20 * 60 + 45, label: 'Dinner with family', kind: 'rest' });
-  return { start: school.end + 75, end: DAY_END, blocks };
+/** The fixed part of a day: `{ start, end, blocks }` (kept for callers that only need the blocks). */
+export function fixedBlocks(profile, date, exams = []) {
+  const frame = dayFrame(profile, date, exams);
+  return { start: frame.window.regularStart, end: frame.window.end, blocks: frame.blocks };
 }
 /** Accepted tasks first in the order they were added, then suggestions by priority. */
 export function sortDayTasks(tasks) {
@@ -150,7 +145,6 @@ export function sortDayTasks(tasks) {
       return a.status === 'suggested' ? b.score - a.score : a.order - b.order;
     });
 }
-/** Places tasks in the free time around school, tuition and meals, with short breaks between. */
 /* ---------- Daily homework and self study slots ---------- */
 
 export const HOMEWORK_SLOT_OPTIONS = [30, 45, 60, 90];
@@ -172,6 +166,25 @@ function fitWindow(busy, from, end, mins) {
   if (fitting) return { start: fitting.start, end: fitting.start + mins };
   const longest = open.sort((a, b) => b.end - b.start - (a.end - a.start))[0];
   return longest ?? null;
+}
+
+/**
+ * Free time for `mins` of study from `from`: the first stretch that holds all of it, or else
+ * the free stretches in time order (each at least 15 minutes) until the minutes are shared out.
+ */
+function fitRanges(busy, from, end, mins) {
+  const whole = fitWindow(busy, from, end, mins);
+  if (!whole || whole.end - whole.start >= mins) return whole ? [whole] : [];
+  const pieces = [];
+  let left = mins;
+  for (const gap of subtract({ start: from, end }, busy)) {
+    if (left < MIN_GAP_MINS) break;
+    const take = Math.min(left, gap.end - gap.start);
+    if (take < MIN_GAP_MINS) continue;
+    pieces.push({ start: gap.start, end: gap.start + take });
+    left -= take;
+  }
+  return pieces;
 }
 
 /** Longest homework a student can add: a big project, spread over several days. */
@@ -215,9 +228,82 @@ export function splitHomework(mins, days, roomOf) {
   return parts;
 }
 
-/** Minutes of the day's Homework slot: the student's choice, leaving at least 30 minutes for study. */
-export function homeworkSlotMins(profile, date) {
-  return Math.max(15, Math.min(profile.homeworkMins ?? DEFAULT_HOMEWORK_MINS, limitFor(profile, date) - MIN_SELF_STUDY_MINS));
+/** The Homework slot's length when the day has `free` minutes: the student's choice, leaving at least 30 minutes for study. */
+export function homeworkMinsFor(profile, free) {
+  return Math.max(15, Math.min(profile.homeworkMins ?? DEFAULT_HOMEWORK_MINS, free - MIN_SELF_STUDY_MINS));
+}
+
+/* ---------- Night revision ---------- */
+
+/** Minutes of night revision for each thing the day covered. */
+export const NIGHT_REVISION_MINS = { school: 15, tuition: 10, study: 10 };
+
+/**
+ * What the night revision covers, every night just before the stop time: what school taught
+ * (on a day with school), each tuition that happened, and the day's own study.
+ */
+export function nightRevisionItems(frame) {
+  const items = [];
+  if (frame.dayType === 'school' || frame.dayType === 'halfDay') items.push({ of: 'school', label: 'School', mins: NIGHT_REVISION_MINS.school });
+  for (const block of frame.blocks) if (block.kind === 'tuition') items.push({ of: 'tuition', label: block.label, mins: NIGHT_REVISION_MINS.tuition });
+  items.push({ of: 'study', label: 'Self study', mins: NIGHT_REVISION_MINS.study });
+  return items;
+}
+
+/**
+ * Where an edited slot goes: the requested time if it is free, otherwise the next free stretch
+ * after it that is long enough, otherwise the longest free stretch after it (at least 15
+ * minutes). Null when nothing after it is free.
+ */
+function editedRange(frame, busy, start, mins) {
+  const pieces = subtract({ start, end: frame.window.end }, busy).filter(
+    (part) => frame.zones.some((zone) => part.start >= zone.start && part.end <= zone.end) || part.start >= frame.window.regularStart,
+  );
+  const fitting = pieces.find((part) => part.end - part.start >= mins);
+  if (fitting) return { start: fitting.start, end: fitting.start + mins };
+  const longest = pieces.sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+  return longest && longest.end - longest.start >= MIN_GAP_MINS ? longest : null;
+}
+
+/**
+ * The night revision slot: the last minutes of free time before sleep (shorter if the evening
+ * is), or where the student moved it. Null when they removed it for the day.
+ */
+function nightRange(frame) {
+  const edit = frame.edits?.night;
+  if (edit?.removed) return null;
+  const mins = nightRevisionItems(frame).reduce((sum, item) => sum + item.mins, 0);
+  // Moved, it keeps its length: what the day covered decides how long night revision is.
+  if (Number.isInteger(edit?.start)) {
+    const moved = editedRange(frame, frame.blocks, edit.start, mins);
+    if (moved) return moved;
+  }
+  const last = frame.gaps.at(-1);
+  return last ? { start: Math.max(last.start, last.end - mins), end: last.end } : null;
+}
+
+/**
+ * Time a day keeps aside before study is planned: the Homework slot (none during a half-yearly
+ * or final) and the night revision slot. `{ homework, night, study }` in minutes, where `study`
+ * is the free time left for self study or test prep.
+ */
+export function reservedMins(profile, frame) {
+  const edits = frame.edits ?? {};
+  const nightSlot = nightRange(frame);
+  const night = nightSlot ? nightSlot.end - nightSlot.start : 0;
+  // No Homework slot while a half-yearly or final is on, however it was edited.
+  const homework = frame.examPeriod || edits.homework?.removed ? 0 : (edits.homework?.mins ?? homeworkMinsFor(profile, frame.free - night));
+  // With Self study removed for the day, its free time stays free: nothing is planned in it.
+  const study = edits.study?.removed ? 0 : Math.max(0, frame.free - night - homework);
+  return { homework, night, study };
+}
+
+/**
+ * Minutes of the day's Homework slot: the student's choice, leaving at least 30 minutes for
+ * study. During a half-yearly or final (first to last paper) there is no Homework slot.
+ */
+export function homeworkSlotMins(profile, date, exams = []) {
+  return reservedMins(profile, dayFrame(profile, date, exams)).homework;
 }
 
 /**
@@ -231,86 +317,182 @@ export function prepExamsOn(exams, date) {
 }
 
 /**
- * Every day has a Homework slot (after school and lunch) and a study slot (the next free
- * stretch after it). Together they fill the day's study limit: homework takes the student's
- * chosen length and the study slot the rest, never less than 30 minutes.
- * In the two weeks before a test, the study slot becomes that test's Test prep slot.
+ * The day's flexible slots. Every night ends with a Night revision slot just before the stop
+ * time (what school, each tuition and the day's study covered). A Homework slot comes after
+ * school and lunch (none during a half-yearly or final). All the free time left is study: first
+ * the student's own study sessions, then the free time after homework. There is no daily limit.
+ * The study slots are Self study, Test prep in the two weeks before a test, or Exam revision
+ * between the papers of a half-yearly or final.
  */
-export function routineSlots(profile, date, exams = []) {
-  const { start, end, blocks } = fixedBlocks(profile, date);
-  const homeworkMins = homeworkSlotMins(profile, date);
-  const studyMins = Math.max(MIN_SELF_STUDY_MINS, limitFor(profile, date) - homeworkMins);
-  const homework = fitWindow(blocks, start, end, homeworkMins);
-  const study = fitWindow(homework ? [...blocks, homework] : blocks, homework ? homework.end : start, end, studyMins);
-  const slots = [];
-  if (homework) slots.push({ kind: 'homework', label: 'Homework', ...homework });
-  if (study) {
-    const upcoming = prepExamsOn(exams, date);
-    if (upcoming.length) {
-      // Papers of one half-yearly or final are shown under the exam's name.
-      const names = [...new Set(upcoming.map((exam) => exam.seriesName ?? exam.name))];
-      slots.push({
-        kind: 'exam',
-        label: 'Test prep',
-        detail: `${names[0]}${names.length > 1 ? ` and ${names.length - 1} more` : ''}`,
-        exams: upcoming.map(({ id, name, date: examDate }) => ({ id, name, date: examDate })),
-        ...study,
-      });
-    } else {
-      slots.push({ kind: 'study', label: 'Self study', ...study });
+export function routineSlots(profile, date, exams = [], frame = dayFrame(profile, date, exams)) {
+  const { blocks, window } = frame;
+  const edits = frame.edits ?? {};
+  const night = nightRange(frame);
+  const reserved = reservedMins(profile, frame);
+  const fixed = night ? [...blocks, night] : blocks;
+  // The Homework slot goes after school, or where the student moved it.
+  const movedHomework = reserved.homework && Number.isInteger(edits.homework?.start) ? editedRange(frame, fixed, edits.homework.start, reserved.homework) : null;
+  const homework = movedHomework ?? (reserved.homework ? fitWindow(fixed, window.regularStart, window.end, reserved.homework) : null);
+  let left = reserved.study;
+
+  const study = [];
+  for (const session of frame.sessions) {
+    for (const piece of subtract(session, [...(homework ? [homework] : []), ...(night ? [night] : [])])) {
+      const take = Math.min(left, piece.end - piece.start);
+      if (take < MIN_GAP_MINS) continue;
+      study.push({ start: piece.start, end: piece.start + take, session: true });
+      left -= take;
     }
   }
+  if (left >= MIN_GAP_MINS) {
+    const busy = [...fixed, ...(homework ? [homework] : []), ...study];
+    study.push(...fitRanges(busy, movedHomework ? window.regularStart : homework ? homework.end : window.regularStart, window.end, left));
+  }
+  study.sort((a, b) => a.start - b.start);
+
+  const upcoming = prepExamsOn(exams, date);
+  // Papers of one half-yearly or final are shown under the exam's name.
+  const names = [...new Set(upcoming.map((exam) => exam.seriesName ?? exam.name))];
+  const look = upcoming.length
+    ? {
+        kind: 'exam',
+        label: frame.examPeriod ? 'Exam revision' : 'Test prep',
+        detail: `${names[0]}${names.length > 1 ? ` and ${names.length - 1} more` : ''}`,
+        exams: upcoming.map(({ id, name, date: examDate }) => ({ id, name, date: examDate })),
+      }
+    : { kind: 'study', label: 'Self study' };
+
+  const slots = [];
+  const editedBy = (key) => (edits[key] && !edits[key].removed ? { edited: edits[key].scope } : {});
+  if (homework) slots.push({ kind: 'homework', label: 'Homework', key: 'homework', ...editedBy('homework'), ...homework });
+  for (const { session, ...range } of study) slots.push({ ...look, key: 'study', ...range, ...(session ? { session: true } : {}) });
+  if (night) slots.push({ kind: 'night', label: 'Night revision', key: 'night', ...editedBy('night'), detail: nightRevisionItems(frame).map((item) => item.label).join(' · '), ...night });
   return slots;
 }
 
 /**
- * Which of the day's slots a task goes in. Work for a test goes in the Test prep slot; school
- * homework in the Homework slot; any other study in the study slot (Test prep or Self study).
+ * Which of the day's slots a task goes in. Night revision goes in the Night revision slot;
+ * work for a test in the Test prep slot; school homework in the Homework slot; any other
+ * study in the study slot (Test prep or Self study).
  */
 export function slotKindFor(task, slots = []) {
+  // Night revision only ever goes in the night slot; without one (removed for the day) it isn't planned.
+  if (task.daily?.type === 'night') return 'night';
   const hasExamSlot = slots.some((slot) => slot.kind === 'exam');
   if (task.examId && hasExamSlot) return 'exam';
   if (task.kind === 'homework' && !task.examId) return 'homework';
   return hasExamSlot ? 'exam' : 'study';
 }
 
-const ROW_ORDER = { fixed: 0, slot: 1, task: 2 };
+const ROW_ORDER = { fixed: 0, slot: 1, break: 2, task: 3 };
+
+/** Earliest start at or after `from` where `mins` fits inside one free interval and ends by `bound`. */
+function earliestFit(free, from, mins, bound = Infinity) {
+  for (const interval of free) {
+    if (interval.end <= from) continue;
+    const start = Math.max(from, interval.start);
+    if (start + mins <= Math.min(interval.end, bound)) return start;
+  }
+  return null;
+}
 
 /**
- * Lays out a day: fixed blocks (school, meals, tuition), the two daily slots, and each task
- * placed from the start of its slot, never overlapping a fixed block or another task.
- * Tasks that don't fit before 22:00 are returned as overflow.
+ * Lays out a day: the fixed blocks (exam paper, school, tuition, timed habits, meals), the
+ * day's slots, and each task in its slot. A task first goes in its own slots in time order,
+ * with a 10-minute break after the one before; if they are full it takes the earliest free
+ * time after its slot, then any free time that day, without the break. It never overlaps a
+ * fixed block or another task. Tasks that fit nowhere before the stop time are overflow.
  */
-export function layoutDay(profile, date, tasks, exams = []) {
-  const { start, end, blocks } = fixedBlocks(profile, date);
-  const slots = routineSlots(profile, date, exams);
-  const rows = [...blocks.map((block) => ({ type: 'fixed', ...block })), ...slots.map((slot) => ({ type: 'slot', ...slot }))];
+/**
+ * Places tasks in order. In slot mode each task goes in its own slots first (stopping where
+ * the next slot starts), with a break after the task before it, then the earliest free time
+ * after its slot, then any free time. In packed mode tasks simply follow one another from
+ * the earliest free time. Breaks are dropped only when they are what stops a task fitting.
+ * `strict` (one task) may only go in its own slots, with its break: that is how the planner
+ * checks a new task. The Night revision slot is kept for night revision in every mode.
+ */
+function placeTasks(frame, slots, ordered, packed, strict = null) {
+  const byTime = [...slots].sort((a, b) => a.start - b.start);
+  // A slot's tasks may run on until the next slot starts; night revision stays inside its own slot.
+  const boundOf = (slot) => (slot.kind === 'night' ? slot.end : (byTime.find((other) => other !== slot && other.start > slot.start)?.start ?? frame.window.end));
+  const nightSlot = slots.find((slot) => slot.kind === 'night');
+  const occupied = [...frame.blocks];
+  // Per slot (or one for the packed day): where the next task may start after its break, where
+  // the last task ended, and how long the student has been studying without a long break.
+  const cursor = new Map();
+  const PACKED = 'packed';
+  const placed = [];
+  const breaks = [];
   const overflow = [];
-  const occupied = [...blocks];
-  const cursor = Object.fromEntries(slots.map((slot) => [slot.kind, slot.start]));
-  for (const task of sortDayTasks(tasks)) {
-    const group = slotKindFor(task, slots);
-    let slotStart = cursor[group] ?? start;
-    let fits = false;
-    for (let guard = 0; guard < 200; guard += 1) {
-      const clash = occupied.find((block) => block.start < slotStart + task.mins && block.end > slotStart);
-      if (clash) {
-        slotStart = clash.end;
-        continue;
-      }
-      fits = slotStart + task.mins <= end;
-      break;
-    }
-    if (fits) {
-      rows.push({ type: 'task', start: slotStart, end: slotStart + task.mins, task });
-      occupied.push({ start: slotStart, end: slotStart + task.mins });
-      cursor[group] = slotStart + task.mins + BREAK_BETWEEN_TASKS;
+  for (const task of ordered) {
+    const night = task.daily?.type === 'night';
+    const free = frame.zones.flatMap((zone) => subtract(zone, nightSlot && !night ? [...occupied, nightSlot] : occupied));
+    let start = null;
+    let region = null;
+    if (packed && !night) {
+      start = earliestFit(free, cursor.get(PACKED)?.at ?? -Infinity, task.mins);
+      if (start !== null) region = PACKED;
     } else {
-      overflow.push(task);
+      const regions = byTime.filter((slot) => slot.kind === slotKindFor(task, slots));
+      for (const candidate of regions) {
+        start = earliestFit(free, cursor.get(candidate)?.at ?? candidate.start, task.mins, boundOf(candidate));
+        if (start !== null) {
+          region = candidate;
+          break;
+        }
+      }
+      if (start === null && task !== strict) start = earliestFit(free, regions[0]?.start ?? frame.window.regularStart, task.mins);
     }
+    if (start === null && task !== strict) start = earliestFit(free, -Infinity, task.mins);
+    if (start === null) {
+      overflow.push(task);
+      continue;
+    }
+    placed.push({ type: 'task', start, end: start + task.mins, task });
+    occupied.push({ start, end: start + task.mins });
+    if (!region) continue;
+    const last = cursor.get(region);
+    // The break before this task shows on the plan; a long enough gap counts as a rest.
+    // Anything already inside the break (a short habit, the night revision slot, another task)
+    // keeps its place; the break shows only in the time that is really empty.
+    if (last && start === last.at && last.at > last.end) {
+      const long = last.at - last.end >= LONG_BREAK_MINS;
+      const taken = [...frame.blocks, ...placed, ...(nightSlot ? [nightSlot] : [])];
+      for (const piece of subtract({ start: last.end, end: last.at }, taken)) breaks.push({ type: 'break', start: piece.start, end: piece.end, long });
+    }
+    const streak = (last && start - last.end < LONG_BREAK_MINS ? last.streak : 0) + task.mins;
+    // Night revision is one sitting before sleep: its parts follow straight on.
+    const pause = night ? 0 : streak >= LONG_BREAK_AFTER_MINS ? LONG_BREAK_MINS : SHORT_BREAK_MINS;
+    cursor.set(region, { at: start + task.mins + pause, end: start + task.mins, streak });
+    // The break is kept free, so nothing else is squeezed into it; it never runs into the next
+    // slot or the night revision.
+    const until = region === PACKED ? (nightSlot && start < nightSlot.start ? nightSlot.start : Infinity) : boundOf(region);
+    const breakEnd = Math.min(start + task.mins + pause, until);
+    if (breakEnd > start + task.mins) occupied.push({ start: start + task.mins, end: breakEnd });
   }
+  return { placed: [...placed, ...breaks], overflow };
+}
+
+/**
+ * Lays out a day: the fixed blocks (exam paper, school, tuition, timed habits, meals), the
+ * day's slots, and each task in its slot. A task first goes in its own slots in time order,
+ * with a 10-minute break after the one before; if they are full it takes the earliest free
+ * time after its slot, then any free time that day, without the break. It never overlaps a
+ * fixed block or another task. If that leaves tasks over, the day is packed again from its
+ * earliest free time instead (a repair step), and whichever fits more is kept. Tasks that fit
+ * nowhere before the stop time are overflow.
+ */
+export function layoutDay(profile, date, tasks, exams = [], frame = dayFrame(profile, date, exams)) {
+  const slots = routineSlots(profile, date, exams, frame);
+  const ordered = sortDayTasks(tasks);
+  let result = placeTasks(frame, slots, ordered, false);
+  if (result.overflow.length) {
+    const packed = placeTasks(frame, slots, ordered, true);
+    if (packed.overflow.length < result.overflow.length) result = packed;
+  }
+  const rows = [...frame.blocks.map((block) => ({ type: 'fixed', ...block })), ...slots.map((slot) => ({ type: 'slot', ...slot })), ...result.placed];
   rows.sort((a, b) => a.start - b.start || ROW_ORDER[a.type] - ROW_ORDER[b.type]);
-  return { rows, overflow, slots };
+  return { rows, overflow: result.overflow, slots, frame };
 }
 /* ---------- Chapters ---------- */
 export function stepsFor(chapter) {
@@ -458,9 +640,9 @@ export function planSuggestions(input) {
   const placed = [];
   for (const candidate of candidates) {
     if (candidate.deadline < start) continue;
-    const date = firstDay(load, profile, candidate.mins, start, candidate.deadline);
+    const date = firstDay(load, profile, candidate.mins, start, candidate.deadline, candidate);
     if (!date) continue;
-    load.add({ date, mins: candidate.mins, status: 'suggested' });
+    load.add({ ...candidate, date, status: 'suggested' });
     placed.push({ ...candidate, date });
   }
   return placed;

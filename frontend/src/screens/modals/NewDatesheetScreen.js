@@ -48,12 +48,9 @@ function Form({ profile, chapters, exams, kind, onDone }) {
       isTaught={isTaught}
       kind={kind}
       existingSeries={existingSeries}
+      schoolStart={profile.schoolStart}
       onSubmit={async (body) => {
-        const created = await examActions.createDatesheet({
-          series: body.series,
-          kind: body.kind,
-          papers: body.papers,
-        });
+        const created = await examActions.createDatesheet(body);
         if (created) onDone();
       }}
     />

@@ -180,7 +180,7 @@ describe('school hours and tuitions', () => {
     ]);
     expect(taskIds(after)).toEqual(taskIds(before));
     expect(after.rows.filter((row) => row.type === 'task').every((row) => row.end <= 1020 || row.start >= 1140)).toBe(true);
-    expect((await dashboardApi.sharing()).schoolDay).toEqual({ schoolStart: 465, schoolEnd: 870, tuitions: profile.tuitions });
+    expect((await dashboardApi.sharing()).schoolDay).toEqual({ schoolStart: 465, schoolEnd: 870, saturday: 'half', tuitions: profile.tuitions });
 
     expect((await profileApi.update({ tuitions: [SCIENCE] })).tuitions).toEqual([{ name: 'Science tuition', days: [3, 6], start: 1080, end: 1140 }]);
     expect(await tuitionRows('2026-11-20')).toEqual([]);
@@ -196,7 +196,7 @@ describe('school hours and tuitions', () => {
       [{ tuitions: [{ ...MATHS, start: '04:00', end: '05:00' }] }, 'start', 'Maths tuition has to be between 05:00 and 22:00'],
       [{ tuitions: [MATHS, { ...SCIENCE, days: [5], start: '17:00', end: '18:00' }] }, 'start', 'Maths tuition and Science tuition overlap on Friday'],
       [{ tuitions: [{ ...MATHS, days: [] }] }, 'days', 'Pick the days for Maths tuition'],
-      [{ tuitions: [{ ...MATHS, days: [0] }] }, 'days', 'Use a whole number from 1 to 6'],
+      [{ tuitions: [{ ...MATHS, days: [7] }] }, 'days', 'Use a whole number from 0 to 6'],
       [{ tuitions: [{ ...MATHS, start: '4pm' }] }, 'start', 'Use HH:MM'],
       [{ tuitions: Array.from({ length: 7 }, () => MATHS) }, 'tuitions', 'Pick at most 6'],
       [{ schoolEnd: '16:30' }, 'start', 'Tuition on Monday clashes with school (07:45 to 16:30)'],
@@ -250,24 +250,26 @@ describe('today and plan', () => {
       today: TODAY,
       nextExam: { name: 'Periodic test 2', daysLeft: 10 },
       suggestedBlocks: { count: 0 },
-      limitMins: 150,
+      // No daily limit: Wednesday's free time is 15:00–16:00, 17:30–20:00 and 21:00–22:00
+      // (the default evening habits take 20:45–21:00).
+      limitMins: 270,
       streak: 0,
     });
     expect(today.tasks.length).toBeGreaterThan(0);
     expect(today.tasks.map(({ task }) => task.kind)).toContain('study');
-    expect(today.plannedMins).toBeLessThanOrEqual(150);
+    expect(today.plannedMins).toBeLessThanOrEqual(today.limitMins);
   });
 
   it('builds the day strip and a timed day', async () => {
     await onboarded();
     const strip = await planApi.strip();
     expect(strip).toHaveLength(14);
-    expect(strip[0]).toMatchObject({ date: TODAY, limitMins: 150 });
+    expect(strip[0]).toMatchObject({ date: TODAY, limitMins: 270 });
     expect(strip.find((day) => day.date === '2026-11-28').hasExam).toBe(true);
     expect(strip.some((day) => day.overloaded)).toBe(false);
 
     const day = await planApi.day(TODAY);
-    expect(day.rows.map((row) => row.kind ?? row.type)).toEqual(expect.arrayContaining(['school', 'tuition', 'rest', 'task']));
+    expect(day.rows.map((row) => row.kind ?? row.type)).toEqual(expect.arrayContaining(['sleep', 'school', 'tuition', 'meal', 'break', 'habit', 'task']));
     expect(day).toMatchObject({ tuitionDay: true, suggestedCount: 0 });
     await expect(planApi.day('2027-06-01')).rejects.toMatchObject({ code: 'DATE_OUT_OF_RANGE' });
   });
@@ -402,17 +404,19 @@ describe('daily homework and self study slots', () => {
       const day = await planApi.day(date);
       const { slots } = day;
       // The timeline itself only has fixed blocks and tasks.
-      expect(day.rows.every((row) => row.type === 'fixed' || row.type === 'task')).toBe(true);
+      expect(day.rows.every((row) => ['fixed', 'task', 'break'].includes(row.type))).toBe(true);
       const beforeTest = date < '2026-11-28' && date >= '2026-11-14';
-      expect(slots.map((slot) => slot.kind)).toEqual(['homework', beforeTest ? 'exam' : 'study']);
+      expect(slots[0].kind).toBe('homework');
+      expect(slots.at(-1).kind).toBe('night');
+      expect(slots.slice(1, -1).every((slot) => slot.kind === (beforeTest ? 'exam' : 'study'))).toBe(true);
       if (beforeTest) expect(slots[1]).toMatchObject({ label: 'Test prep', detail: 'Periodic test 2', exams: [{ name: 'Periodic test 2', date: '2026-11-28' }] });
     }
-    expect((await dashboardApi.today()).slots.map((slot) => slot.label)).toEqual(['Homework', 'Test prep']);
+    expect((await dashboardApi.today()).slots.map((slot) => slot.label)).toEqual(['Homework', 'Test prep', 'Test prep', 'Night revision']);
   });
 
   it('uses Self study again once no test is coming up', async () => {
     await profileApi.onboard({ ...ONBOARDING, exams: [] });
-    expect((await dashboardApi.today()).slots.map((slot) => slot.label)).toEqual(['Homework', 'Self study']);
+    expect((await dashboardApi.today()).slots.map((slot) => slot.label)).toEqual(['Homework', 'Self study', 'Self study', 'Night revision']);
   });
 
   it('puts the test’s work in Test prep and school homework in the Homework slot', async () => {
@@ -475,9 +479,11 @@ describe('daily homework and self study slots', () => {
     await onboarded();
     expect((await profileApi.get()).homeworkMins).toBe(60);
     expect((await profileApi.update({ homeworkMins: 45 })).homeworkMins).toBe(45);
-    const [homework, study] = (await planApi.day('2026-11-19')).slots;
-    expect(homework.end - homework.start).toBe(45);
-    expect(study.end - study.start).toBe(135);
+    const { slots } = await planApi.day('2026-11-19');
+    expect(slots[0].end - slots[0].start).toBe(45);
+    // Everything else free is study, here Test prep (25 minutes of it are night revision).
+    const day = await planApi.day('2026-11-19');
+    expect(slots.filter((slot) => slot.kind === 'exam').reduce((sum, slot) => sum + slot.end - slot.start, 0)).toBe(day.frame.freeMins - 45 - 25);
     await expect(profileApi.update({ homeworkMins: 25 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect((await dashboardApi.sharing()).homeworkMins).toBe(45);
   });

@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Gradient } from '../../components/ui/Gradient';
 import { Icon } from '../../components/ui/Icon';
 import { Card, Divider, IconTile, Screen, Section, Stack } from '../../components/ui/Layout';
-import { CountUp, PressableScale, ProgressBar, Pulse } from '../../components/ui/Motion';
+import { CountUp, ProgressBar, Pulse } from '../../components/ui/Motion';
 import { AsyncBoundary, Banner, EmptyState } from '../../components/ui/States';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useResource } from '../../hooks/useResource';
@@ -32,7 +32,6 @@ function TodayContent({ data, navigation }) {
   return (
     <Stack>
       <Hero data={data} />
-      {data.examSeason ? <Banner tone="info" icon="moon" title="Exam-season mode is on" body="Your daily limit is 45 min higher." /> : null}
       <TodayPlan data={data} navigation={navigation} />
       {data.suggestedBlocks.count ? (
         <Banner tone="info" icon="spark" title={`${plural(data.suggestedBlocks.count, 'more study block')} suggested`} body="The planner found free time on the coming days before your tests. You choose what stays.">
@@ -44,7 +43,7 @@ function TodayContent({ data, navigation }) {
       {data.heavyDay ? (
         <Banner
           title={`${capitalize(dayName(data.heavyDay.date, data.today))} looks too heavy`}
-          body={`${duration(data.heavyDay.plannedMins)} planned against a limit of ${duration(data.heavyDay.limitMins)}.`}
+          body={`${duration(data.heavyDay.plannedMins)} planned but only ${duration(data.heavyDay.limitMins)} free that day.`}
         >
           <View style={styles.buttons}>
             <Button title="Fix it in Plan" size="sm" onPress={() => openPlan(data.heavyDay.date)} />
@@ -52,7 +51,6 @@ function TodayContent({ data, navigation }) {
         </Banner>
       ) : null}
       <NextTest exam={data.nextExam} navigation={navigation} />
-      <QuickActions navigation={navigation} />
       <WaitingSuggestions suggestions={data.suggestions} today={data.today} laterCount={data.laterCount} />
     </Stack>
   );
@@ -74,7 +72,7 @@ function Hero({ data }) {
   const total = data.tasks.length;
   const left = total - data.doneCount;
   const message = !total
-    ? 'Nothing planned yet. Add homework or a test below.'
+    ? 'Nothing planned yet. Add homework or a test in Plan.'
     : left === 0
       ? 'All done for today. Brilliant work! 🎉'
       : `${left} of ${plural(total, 'task')} left. Tap a task when it’s done.`;
@@ -174,43 +172,6 @@ function NextTest({ exam, navigation }) {
   );
 }
 
-/** Three big shortcuts for the things students add most. */
-function QuickActions({ navigation }) {
-  const { colors } = useTheme();
-  const actions = [
-    { label: 'Homework', icon: 'homework', color: colors.tint, onPress: () => navigation.navigate('NewHomework'), testID: 'today-add-homework' },
-    { label: 'Test', icon: 'trophy', color: colors.warning, onPress: () => navigation.navigate('NewDatesheet', { kind: 'unit' }) },
-    { label: 'Chapter', icon: 'book', color: '#06B6D4', onPress: () => navigation.navigate('Syllabus'), testID: 'today-open-syllabus' },
-  ];
-  return (
-    <Section title="Add" icon="plus" bare>
-      <View style={styles.grid}>
-        {actions.map((action) => (
-          <QuickTile key={action.label} {...action} />
-        ))}
-      </View>
-    </Section>
-  );
-}
-
-function QuickTile({ label, icon, color, onPress, testID }) {
-  const { colors, radius } = useTheme();
-  return (
-    <PressableScale
-      onPress={onPress}
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={`Add ${label.toLowerCase()}`}
-      style={[styles.tile, { backgroundColor: colors.card, borderRadius: radius.lg, boxShadow: colors.shadow }]}
-    >
-      <IconTile name={icon} color={color} size={36} />
-      <Text style={[styles.tileLabel, { color: colors.text }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </PressableScale>
-  );
-}
-
 function TodayPlan({ data, navigation }) {
   const toggle = useAsyncAction(taskActions.toggleDone);
   const act = useAsyncAction((action, task) => action(task, data.today));
@@ -219,14 +180,14 @@ function TodayPlan({ data, navigation }) {
     <Section
       title="Today’s plan"
       icon="list"
-      meta={`${duration(data.plannedMins)} of ${duration(data.limitMins)}`}
+      meta={`${duration(data.plannedMins)} of ${duration(data.limitMins)} free`}
       flush
       footer={hasSuggested ? 'Suggested blocks were added by the planner. Just do them, or keep, move or remove them. Tap the pencil to edit any task.' : 'Tap the pencil to edit any task.'}
     >
       {data.tasks.length ? (
         data.tasks.map(({ task, start }, index) => (
           <View key={task.id}>
-            {index ? <Divider inset={52} /> : null}
+            {slotStartingAt(data.slots, data.tasks, index) ? <SlotLine slot={slotStartingAt(data.slots, data.tasks, index)} /> : index ? <Divider inset={52} /> : null}
             <TaskRow
               task={task}
               time={start === null ? '–' : clockTime(start)}
@@ -241,9 +202,33 @@ function TodayPlan({ data, navigation }) {
         <EmptyState icon="today" message="Nothing planned. Pick a task in Plan or accept a suggestion." />
       )}
       <View style={styles.cardButtons}>
-        <Button title="Start focus timer" icon="play" size="sm" variant="primary" block onPress={() => navigation.navigate('Progress', { section: 'habits' })} />
+        <Button title="Start focus timer" icon="play" size="sm" variant="primary" block onPress={() => navigation.navigate('Habits', { section: 'habits' })} />
       </View>
     </Section>
+  );
+}
+
+/** The slot a task is in: Homework, Self study, Test prep or Night revision. */
+const slotOf = (slots, start) => (start === null ? null : (slots ?? []).find((slot) => start >= slot.start && start < slot.end) ?? null);
+
+/** The slot that starts with the task at `index` (it differs from the task before's), or null. */
+function slotStartingAt(slots, tasks, index) {
+  const slot = slotOf(slots, tasks[index].start);
+  const before = index ? slotOf(slots, tasks[index - 1].start) : null;
+  return slot && slot !== before && !(before && before.kind === slot.kind && before.label === slot.label) ? slot : null;
+}
+
+/** A thin header naming the slot the next tasks are in. */
+function SlotLine({ slot }) {
+  const { colors } = useTheme();
+  const color = slot.kind === 'night' ? colors.tintInk : slot.kind === 'exam' ? colors.warningInk : slot.kind === 'homework' ? colors.tint : colors.successInk;
+  return (
+    <View style={[styles.slotLine, { borderTopColor: colors.separator }]} testID={`today-slot-line-${slot.kind}`}>
+      <Icon name={slot.kind === 'night' ? 'moon' : slot.kind === 'homework' ? 'homework' : slot.kind === 'exam' ? 'trophy' : 'book'} size={13} color={color} />
+      <Text style={[styles.slotLineText, { color }]}>
+        {slot.label.toUpperCase()} · {clockTime(slot.start)}–{clockTime(slot.end)}
+      </Text>
+    </View>
   );
 }
 
@@ -319,7 +304,6 @@ const styles = StyleSheet.create({
   suggestedActions: { paddingLeft: 53, paddingRight: 12, paddingBottom: 10, gap: 6 },
   rowButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   cardButtons: { paddingHorizontal: 14, paddingBottom: 12, marginTop: 2 },
-  grid: { flexDirection: 'row', gap: 8 },
-  tile: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12 },
-  tileLabel: { fontSize: 14, fontWeight: '800' },
+  slotLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 2, borderTopWidth: StyleSheet.hairlineWidth },
+  slotLineText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
 });

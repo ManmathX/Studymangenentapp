@@ -1,12 +1,23 @@
 import { addDays, diffDays, eachDay } from './dates';
-import { homeworkSlotMins, limitFor, priority } from './engine';
+import { dayFrame } from './dayFrame';
+import { priority, reservedMins } from './engine';
 import { shortDate } from './shortDate';
 import { EXAM_PREP_DAYS } from './types';
 
 export { EXAM_PREP_DAYS };
 
-/** Minutes of the day's Test prep slot: the study limit minus the Homework slot, kept free for school homework. */
-export const prepCapacity = (profile, date) => limitFor(profile, date) - homeworkSlotMins(profile, date);
+/**
+ * Minutes of a day's Test prep time: all its free time minus the Homework slot (kept for
+ * school homework; none during a half-yearly or final) and the night revision slot.
+ */
+export function prepCapacity(profile, date, exams = [], frame = dayFrame(profile, date, exams)) {
+  return reservedMins(profile, frame).study;
+}
+
+/** Test prep minutes still free on a day, given what `load` already holds (study work only). */
+export function prepRoom(load, profile, date) {
+  return prepCapacity(profile, date, load.exams, load.frame(profile, date)) - load.planned(date, true);
+}
 
 const maxKey = (a, b) => (a > b ? a : b);
 const STATUS_ORDER = { not: 0, learning: 1, revised: 2, mastered: 3 };
@@ -39,23 +50,15 @@ export function examStepsFor(chapter) {
 }
 
 /**
- * Earliest day from `from` whose Test prep slot has room for `mins`. If every day is full, the
- * least-overloaded day in range, so nothing the test needs is silently dropped.
- * `load` holds study work only (not school homework, which has its own slot).
+ * The day for a step that may start on `from` and must be done by `deadline`: the earliest
+ * day whose Test prep time still has room and where the step fits on the day's timeline.
+ * Returns null when no day works: the step is reported as not planned, never squeezed in.
+ * `load` counts study work only (not school homework, which has its own slot).
  */
-function pickDay(load, profile, mins, from, deadline) {
-  if (from > deadline) return deadline;
-  let leastBusy = from;
-  let leastOver = Infinity;
-  for (const date of eachDay(from, deadline)) {
-    const over = load.planned(date, true) + mins - prepCapacity(profile, date);
-    if (over <= 0) return date;
-    if (over < leastOver) {
-      leastOver = over;
-      leastBusy = date;
-    }
-  }
-  return leastBusy;
+export function pickPrepDay(load, profile, slot, from, deadline) {
+  const first = from > deadline ? deadline : from;
+  for (const date of eachDay(first, deadline)) if (prepRoom(load, profile, date) >= slot.mins && load.fits(profile, date, slot)) return date;
+  return null;
 }
 
 /**
@@ -64,11 +67,12 @@ function pickDay(load, profile, mins, from, deadline) {
  * and homework are spread over the first half of the preparation days and its revision over the
  * second half. Mutates `load` so each slot sees the ones before it.
  *
- * Returns `{ blocks, reason }`; `reason` is 'NO_TIME' when the test is too close to plan for.
+ * Returns `{ blocks, reason, unplaced }`. `reason` is 'NO_TIME' when the test is too close to plan
+ * for; `unplaced` counts steps that did not fit in the days before it.
  */
 export function planExamSlots({ exam, chapters, profile, load, today, start, skipChapterKeys = new Set() }) {
   const deadline = addDays(exam.date, -1);
-  if (deadline < start) return { blocks: [], reason: 'NO_TIME' };
+  if (deadline < start) return { blocks: [], reason: 'NO_TIME', unplaced: 0 };
   const days = [...eachDay(maxKey(start, addDays(exam.date, -EXAM_PREP_DAYS)), deadline)];
   const midIndex = Math.floor((days.length - 1) / 2);
   const lastRevisionIndex = Math.max(midIndex, days.length - 2);
@@ -82,10 +86,16 @@ export function planExamSlots({ exam, chapters, profile, load, today, start, ski
     .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
 
   const blocks = [];
+  let unplaced = 0;
   const place = (slot, from) => {
-    const date = pickDay(load, profile, slot.mins, from, deadline);
-    load.add({ date, mins: slot.mins, status: 'accepted' });
-    blocks.push({ ...slot, date, deadline, why, examId: exam.id });
+    const planned = { ...slot, deadline, why, examId: exam.id };
+    const date = pickPrepDay(load, profile, planned, from, deadline);
+    if (!date) {
+      unplaced += 1;
+      return null;
+    }
+    load.add({ ...planned, date, status: 'accepted' });
+    blocks.push({ ...planned, date });
     return date;
   };
 
@@ -100,7 +110,7 @@ export function planExamSlots({ exam, chapters, profile, load, today, start, ski
         { subject: chapter.subject, title: `${chapter.name}: ${step.title}`, kind: step.kind, mins: step.mins, chapterKey: chapter.key, score },
         from,
       );
-      next = addDays(date, 1);
+      if (date) next = addDays(date, 1);
     }
   });
 
@@ -117,13 +127,13 @@ export function planExamSlots({ exam, chapters, profile, load, today, start, ski
       deadline,
     );
   }
-  return { blocks, reason: null };
+  return { blocks, reason: null, unplaced };
 }
 
-/** Counts for the confirmation message: how many slots of each kind, and the first day. */
-export function summarizeSlots(blocks, reason = null) {
+/** Counts for the confirmation message: how many slots of each kind, the first day, and how many steps did not fit. */
+export function summarizeSlots(blocks, reason = null, unplaced = 0) {
   const counts = { study: 0, homework: 0, revision: 0 };
   for (const block of blocks) counts[block.kind] = (counts[block.kind] ?? 0) + 1;
   const firstDate = blocks.reduce((first, block) => (!first || block.date < first ? block.date : first), null);
-  return { added: blocks.length, firstDate, counts, reason };
+  return { added: blocks.length, firstDate, counts, reason, unplaced };
 }
